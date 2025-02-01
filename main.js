@@ -9,7 +9,7 @@ import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 const scene = new THREE.Scene();
 
 const textureLoader = new  THREE.TextureLoader();
-const matcapTexture = textureLoader.load('public/textures/matcaps/8.png')
+const matcapTexture = textureLoader.load('/static/textures/matcaps/8.png')
 matcapTexture.colorSpace = THREE.SRGBColorSpace;
 
 const donutGeometry = new THREE.TorusGeometry(0.3, 0.2, 20, 45);
