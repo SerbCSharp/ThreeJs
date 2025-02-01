@@ -9,11 +9,11 @@ import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 const scene = new THREE.Scene();
 
 const textureLoader = new  THREE.TextureLoader();
-const matcapTexture = textureLoader.load('/public/8.png')
+const matcapTexture = textureLoader.load('/8.png')
 matcapTexture.colorSpace = THREE.SRGBColorSpace;
 
 const fontLoader = new FontLoader();
-fontLoader.load('/public/helvetiker_regular.typeface.json', (font) => {
+fontLoader.load('/helvetiker_regular.typeface.json', (font) => {
     const textCeometry = new TextGeometry('Air Battle', {
 		font: font,
 		size: 0.5,
