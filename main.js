@@ -12,12 +12,6 @@ const textureLoader = new  THREE.TextureLoader();
 const matcapTexture = textureLoader.load('/8.png')
 matcapTexture.colorSpace = THREE.SRGBColorSpace;
 
-// const donutGeometry = new THREE.TorusGeometry(0.3, 0.2, 20, 45);
-// const material = new THREE.MeshMatcapMaterial();
-// material.matcap = matcapTexture;
-// const donut = new THREE.Mesh(donutGeometry, material);
-// scene.add(donut);
-
 const fontLoader = new FontLoader();
 fontLoader.load('/helvetiker_regular.typeface.json', (font) => {
     const textCeometry = new TextGeometry('Air Battle', {
