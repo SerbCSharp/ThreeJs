@@ -8,12 +8,13 @@ import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 
 const scene = new THREE.Scene();
 
-//const textureLoader = new  THREE.TextureLoader();
-//const matcapTexture = textureLoader.load('/static/textures/matcaps/8.png')
-//matcapTexture.colorSpace = THREE.SRGBColorSpace;
+const textureLoader = new  THREE.TextureLoader();
+const matcapTexture = textureLoader.load('/static/textures/matcaps/8.png')
+matcapTexture.colorSpace = THREE.SRGBColorSpace;
 
 const donutGeometry = new THREE.TorusGeometry(0.3, 0.2, 20, 45);
-const material = new THREE.MeshBasicMaterial();
+const material = new THREE.MeshMatcapMaterial();
+material.matcap = matcapTexture;
 const donut = new THREE.Mesh(donutGeometry, material);
 scene.add(donut);
 
