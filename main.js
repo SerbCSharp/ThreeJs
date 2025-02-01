@@ -8,43 +8,48 @@ import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 
 const scene = new THREE.Scene();
 
-const textureLoader = new  THREE.TextureLoader();
-const matcapTexture = textureLoader.load('/static/textures/matcaps/8.png')
-matcapTexture.colorSpace = THREE.SRGBColorSpace;
+//const textureLoader = new  THREE.TextureLoader();
+//const matcapTexture = textureLoader.load('/static/textures/matcaps/8.png')
+//matcapTexture.colorSpace = THREE.SRGBColorSpace;
 
-const fontLoader = new FontLoader();
-fontLoader.load('/static/fonts/helvetiker_regular.typeface.json', (font) => {
-    const textCeometry = new TextGeometry('Air Battle', {
-		font: font,
-		size: 0.5,
-		depth: 0.2,
-		curveSegments: 5,
-		bevelEnabled: true,
-		bevelThickness: 0.03,
-		bevelSize: 0.02,
-		bevelOffset: 0,
-		bevelSegments: 4
-	})
-    textCeometry.center();
-    const material = new THREE.MeshMatcapMaterial();
-    material.matcap = matcapTexture;
-    const text = new THREE.Mesh(textCeometry, material);
-    scene.add(text);
+const donutGeometry = new THREE.TorusGeometry(0.3, 0.2, 20, 45);
+const material = new THREE.MeshBasicMaterial();
+const donut = new THREE.Mesh(donutGeometry, material);
+scene.add(donut);
 
-    const donutGeometry = new THREE.TorusGeometry(0.3, 0.2, 20, 45);
-    for(let i = 0; i < 200; i++)
-    {
-        const donut = new THREE.Mesh(donutGeometry, material);
-        donut.position.x = (Math.random() - 0.5) * 10;
-        donut.position.y = (Math.random() - 0.5) * 10;
-        donut.position.z = (Math.random() - 0.5) * 10;
-        donut.rotation.x = Math.random() * Math.PI
-        donut.rotation.y = Math.random() * Math.PI
-        const scale = Math.random();
-        donut.scale.set(scale, scale, scale);
-        scene.add(donut);
-    }
-});
+// const fontLoader = new FontLoader();
+// fontLoader.load('/static/fonts/helvetiker_regular.typeface.json', (font) => {
+//     const textCeometry = new TextGeometry('Air Battle', {
+// 		font: font,
+// 		size: 0.5,
+// 		depth: 0.2,
+// 		curveSegments: 5,
+// 		bevelEnabled: true,
+// 		bevelThickness: 0.03,
+// 		bevelSize: 0.02,
+// 		bevelOffset: 0,
+// 		bevelSegments: 4
+// 	})
+//     textCeometry.center();
+//     const material = new THREE.MeshMatcapMaterial();
+//     material.matcap = matcapTexture;
+//     const text = new THREE.Mesh(textCeometry, material);
+//     scene.add(text);
+
+//     const donutGeometry = new THREE.TorusGeometry(0.3, 0.2, 20, 45);
+//     for(let i = 0; i < 200; i++)
+//     {
+//         const donut = new THREE.Mesh(donutGeometry, material);
+//         donut.position.x = (Math.random() - 0.5) * 10;
+//         donut.position.y = (Math.random() - 0.5) * 10;
+//         donut.position.z = (Math.random() - 0.5) * 10;
+//         donut.rotation.x = Math.random() * Math.PI
+//         donut.rotation.y = Math.random() * Math.PI
+//         const scale = Math.random();
+//         donut.scale.set(scale, scale, scale);
+//         scene.add(donut);
+//     }
+// });
 
 const camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 100 );
 camera.position.x = 1;
