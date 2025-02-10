@@ -1,151 +1,64 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
 import GUI from 'lil-gui'
-import * as CANNON from 'cannon-es'
+import { clipping } from 'three/src/nodes/accessors/ClippingNode.js'
 
-const objectToUpdate = []
-const world = new CANNON.World()
-
+/**
+ * Base
+ */
+// Debug
 const gui = new GUI()
-const debugObject = {}
-debugObject.createSphere = () =>
-{
-    createSphere(
-        Math.random() * 0.5,
-        {
-            x: (Math.random() - 0.5) * 3,
-            y: 3,
-            z: (Math.random() - 0.5) * 3
-        }
-    )
-}
 
-debugObject.createBox = () =>
-{
-    createBox(
-        Math.random(),
-        Math.random(),
-        Math.random(),
-        {
-            x: (Math.random() - 0.5) * 3,
-            y: 3,
-            z: (Math.random() - 0.5) * 3
-        }
-    )
-}
-
-// Reset
-debugObject.reset = () =>
-    {
-        for(const object of objectToUpdate)
-        {
-            // Remove body
-            object.body.removeEventListener('collide', playHitSound)
-            world.removeBody(object.body)
-    
-            // Remove mesh
-            scene.remove(object.mesh)
-        }
-        
-        objectToUpdate.splice(0, objectToUpdate.length)
-    }
-    gui.add(debugObject, 'reset')
-    
-    
-gui.add(debugObject, 'createSphere')
-gui.add(debugObject, 'createBox')
-
+// Canvas
 const canvas = document.querySelector('canvas.webgl')
+
+// Scene
 const scene = new THREE.Scene()
-// const axis = new THREE.AxesHelper(4);
-// scene.add(axis);
 
-const hitSound = new Audio('/hit.mp3')
-const playHitSound = (collision) =>
-{
-    const impactStrenght = collision.contact.getImpactVelocityAlongNormal()
-    if(impactStrenght > 1.5)
+const dracoLoader = new DRACOLoader();
+dracoLoader.setDecoderPath('/draco/')
+const gltfLoader = new GLTFLoader();
+gltfLoader.setDRACOLoader(dracoLoader)
+
+let mixer = null
+
+gltfLoader.load('/models/Fox/glTF/Fox.gltf',
+    (gltf) =>
     {
-        hitSound.volume = Math.random()
-        hitSound.currentTime = 0
-        hitSound.play()
-    }
-}
+        mixer = new THREE.AnimationMixer(gltf.scene)
 
-// const textureLoader = new THREE.TextureLoader()
-const cubeTextureLoader = new THREE.CubeTextureLoader()
-const environmentMapTexture = cubeTextureLoader.load([
-    '/0/px.png',
-    '/0/nx.png',
-    '/0/py.png',
-    '/0/ny.png',
-    '/0/pz.png',
-    '/0/nz.png'
-])
+        const action = mixer.clipAction(gltf.animations[2])
+        action.play()
 
-world.broadphase = new CANNON.SAPBroadphase(world)
-world.allowSleep = true
-world.gravity.set( 0, -9.82, 0)
-
-const defaultMaterial = new CANNON.Material('default')
-const defaultContactMaterial = new CANNON.ContactMaterial(
-    defaultMaterial,
-    defaultMaterial,
-    {
-        friction: 100,
-        restitution: 0.7
+        gltf.scene.scale.set(0.025, 0.025, 0.025)
+        scene.add(gltf.scene)
     }
 )
-world.addContactMaterial(defaultContactMaterial)
-world.defaultContactMaterial = defaultContactMaterial
 
-// const sphereSnape = new CANNON.Sphere(0.5)
-// const sphereBody = new CANNON.Body({
-//     mass: 1,
-//     position: new CANNON.Vec3(0, 3, 0),
-//     shape: sphereSnape
-// })
-// sphereBody.applyLocalForce(new CANNON.Vec3(150, 0, 0), new CANNON.Vec3(0, 0, 0))
-// world.addBody(sphereBody);
-
-const floorShape = new CANNON.Plane()
-const floorBody = new CANNON.Body()
-floorBody.mass = 0
-floorBody.addShape(floorShape)
-floorBody.quaternion.setFromAxisAngle(new CANNON.Vec3(-1, 0, 0), Math.PI * 0.5) 
-world.addBody(floorBody)
-
-// const sphere = new THREE.Mesh(
-//     new THREE.SphereGeometry(0.5, 32, 32),
-//     new THREE.MeshStandardMaterial({
-//         metalness: 0.3,
-//         roughness: 0.4,
-//         envMap: environmentMapTexture,
-//         envMapIntensity: 0.5
-//     })
-// )
-// sphere.castShadow = true
-// sphere.position.y = 0.5
-// scene.add(sphere)
-
+/**
+ * Floor
+ */
 const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(10, 10),
     new THREE.MeshStandardMaterial({
-        color: '#777777',
-        metalness: 0.3,
-        roughness: 0.4,
-        envMap: environmentMapTexture,
-        envMapIntensity: 0.5
+        color: '#444444',
+        metalness: 0,
+        roughness: 0.5
     })
 )
 floor.receiveShadow = true
 floor.rotation.x = - Math.PI * 0.5
 scene.add(floor)
 
-const ambientLight = new THREE.AmbientLight(0xffffff, 2.1)
+/**
+ * Lights
+ */
+const ambientLight = new THREE.AmbientLight(0xffffff, 2.4)
 scene.add(ambientLight)
 
-const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6)
+const directionalLight = new THREE.DirectionalLight(0xffffff, 1.8)
 directionalLight.castShadow = true
 directionalLight.shadow.mapSize.set(1024, 1024)
 directionalLight.shadow.camera.far = 15
@@ -156,6 +69,9 @@ directionalLight.shadow.camera.bottom = - 7
 directionalLight.position.set(5, 5, 5)
 scene.add(directionalLight)
 
+/**
+ * Sizes
+ */
 const sizes = {
     width: window.innerWidth,
     height: window.innerHeight
@@ -176,15 +92,22 @@ window.addEventListener('resize', () =>
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 })
 
+/**
+ * Camera
+ */
 // Base camera
 const camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height, 0.1, 100)
-camera.position.set(- 7, 7, 7)
+camera.position.set(2, 2, 2)
 scene.add(camera)
 
 // Controls
 const controls = new OrbitControls(camera, canvas)
+controls.target.set(0, 0.75, 0)
 controls.enableDamping = true
 
+/**
+ * Renderer
+ */
 const renderer = new THREE.WebGLRenderer({
     canvas: canvas
 })
@@ -193,80 +116,22 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap
 renderer.setSize(sizes.width, sizes.height)
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 
-const createSphere = (radius, position) =>
-{
-    const mesh = new THREE.Mesh(
-        new THREE.SphereGeometry(radius, 20, 20),
-        new THREE.MeshStandardMaterial({
-            metalness: 0.3,
-            roughness: 0.4,
-            envMap: environmentMapTexture
-        })
-    )
-    mesh.castShadow = true
-    mesh.position.copy(position)
-    scene.add(mesh)
-
-    const shape = new CANNON.Sphere(radius)
-    const body = new CANNON.Body({
-        mass: 1,
-        shape: shape,
-        material: defaultMaterial
-    })
-    body.position.copy(position)
-    body.addEventListener('collide', playHitSound)
-    world.addBody(body);
-
-    objectToUpdate.push({ mesh, body})
-}
-
-const boxGeometry = new THREE.BoxGeometry(1, 1, 1)
-const boxMaterial = new THREE.MeshStandardMaterial({
-    metalness: 0.3,
-    roughness: 0.4,
-    envMap: environmentMapTexture
-})
-
-const createBox = (width, height, depth, position) =>
-    {
-        const mesh = new THREE.Mesh( boxGeometry, boxMaterial)
-        mesh.scale.set(width, height, depth)
-        mesh.castShadow = true
-        mesh.position.copy(position)
-        scene.add(mesh)
-    
-        const shape = new CANNON.Box(new CANNON.Vec3(width/2, height/2, depth/2))
-        const body = new CANNON.Body({
-            mass: 1,
-            shape: shape,
-            material: defaultMaterial
-        })
-        body.position.copy(position)
-        body.addEventListener('collide', playHitSound)
-        world.addBody(body);
-    
-        objectToUpdate.push({ mesh, body})
-    }
-
+/**
+ * Animate
+ */
 const clock = new THREE.Clock()
-let oldElapsedTime = 0
+let previousTime = 0
 
 const tick = () =>
 {
     const elapsedTime = clock.getElapsedTime()
-    const deltaTime = elapsedTime - oldElapsedTime
-    oldElapsedTime = elapsedTime
+    const deltaTime = elapsedTime - previousTime
+    previousTime = elapsedTime
 
-    //sphereBody.applyForce(new CANNON.Vec3(- 0.5, 0, 0), sphereBody.position)
-
-    world.step(1/60, deltaTime, 3)
-    for(const object of objectToUpdate)
+    if(mixer !== null)
     {
-        object.mesh.position.copy(object.body.position)
-        object.mesh.quaternion.copy(object.body.quaternion)
+        mixer.update(deltaTime)
     }
-
-    //sphere.position.copy(sphereBody.position)
 
     // Update controls
     controls.update()
