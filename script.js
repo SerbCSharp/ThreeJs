@@ -1,8 +1,16 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
-import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
 import GUI from 'lil-gui'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js'
+import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js'
+import { GroundedSkybox } from 'three/examples/jsm/objects/GroundedSkybox.js'
+
+const gltfLoader = new GLTFLoader()
+const exrLoader = new EXRLoader();
+const cubeTextureLoader = new THREE.CubeTextureLoader()
+const rgbeLoader = new RGBELoader();
+const textureLoader = new THREE.TextureLoader()
 
 /**
  * Base
@@ -16,56 +24,98 @@ const canvas = document.querySelector('canvas.webgl')
 // Scene
 const scene = new THREE.Scene()
 
+// const updateAllMaterials = () =>
+// {
+//     scene.traverse((child) => 
+//     {
+//         if(child.isMesh && child.material.isMeshStandardMaterial)
+//         {
+
+//         }
+//     })
+// }
+
+// const environmentMap = cubeTextureLoader.load([
+//     '/environmentMaps/0/px.png',
+//     '/environmentMaps/0/nx.png',
+//     '/environmentMaps/0/py.png',
+//     '/environmentMaps/0/ny.png',
+//     '/environmentMaps/0/pz.png',
+//     '/environmentMaps/0/nz.png'
+// ])
+
+// scene.environment = environmentMap
+// scene.background = environmentMap
+// scene.backgroundBlurriness = 0
+// scene.backgroundIntensity = 1
+
+// rgbeLoader.load('/environmentMaps/blender2k.hdr', (environmentMap) =>
+// {
+//     environmentMap.mapping = THREE.EquirectangularReflectionMapping
+//     scene.environment = environmentMap
+//     //scene.background = environmentMap
+// })
+
+// exrLoader.load('/environmentMaps/nvidiaCanvas-4k.exr', (environmentMap) =>
+// {
+//     environmentMap.mapping = THREE.EquirectangularReflectionMapping
+//     scene.environment = environmentMap
+//     scene.background = environmentMap
+// })
+
+// const environmentMap = textureLoader.load('/environmentMaps/blockadesLabsSkybox/anime_art_style_japan_streets_with_cherry_blossom_.jpg')
+// environmentMap.mapping = THREE.EquirectangularReflectionMapping
+// environmentMap.colorSpace = THREE.SRGBColorSpace
+// scene.environment = environmentMap
+// scene.background = environmentMap
+
+// rgbeLoader.load('/environmentMaps/2/2k.hdr', (environmentMap) =>
+// {
+//     environmentMap.mapping = THREE.EquirectangularReflectionMapping
+//     scene.environment = environmentMap
+//     const skybox = new GroundedSkybox(environmentMap, 11, 120)
+//     //skybox.scale.setScalar(50)
+//     scene.add(skybox)
+// })
+
+const environmentMap = textureLoader.load('/environmentMaps/blockadesLabsSkybox/interior_views_cozy_wood_cabin_with_cauldron_and_p.jpg')
+environmentMap.mapping = THREE.EquirectangularReflectionMapping
+environmentMap.colorSpace = THREE.SRGBColorSpace
+scene.background = environmentMap
+
+const holyDonut = new THREE.Mesh(
+    new THREE.TorusGeometry(8, 0.5),
+    new THREE. MeshBasicMaterial({ color: new THREE.Color(10, 4, 2)}))
+holyDonut.layers.enable(1)
+holyDonut.position.y = 3.5
+scene.add(holyDonut)
+
+const cubeRenderTarjet = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType })
+scene.environment = cubeRenderTarjet.texture
+
+const cubeCamera = new THREE.CubeCamera(0.1, 100, cubeRenderTarjet)
+cubeCamera.layers.set(1)
+
 /**
- * Models
+ * Torus Knot
  */
-const dracoLoader = new DRACOLoader()
-dracoLoader.setDecoderPath('/draco/')
+const torusKnot = new THREE.Mesh(
+    new THREE.TorusKnotGeometry(1, 0.4, 100, 16),
+    new THREE.MeshStandardMaterial({ roughness: 0, metalness: 1, color: 0xaaaaaa})
+)
+//torusKnot.material.envMap = environmentMap
+torusKnot.position.x = - 4
+torusKnot.position.y = 4
+scene.add(torusKnot)
 
-const gltfLoader = new GLTFLoader()
-gltfLoader.setDRACOLoader(dracoLoader)
-
-let mixer = null
-
-gltfLoader.load(
-    '/models/hamburger.glb',
-    (gltf) =>
+gltfLoader.load('/models/FlightHelmet/glTF/FlightHelmet.gltf',
+    (gltf) => 
     {
+        gltf.scene.scale.set(10, 10, 10)
         scene.add(gltf.scene)
+        //updateAllMaterials()
     }
 )
-
-/**
- * Floor
- */
-const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(50, 50),
-    new THREE.MeshStandardMaterial({
-        color: '#444444',
-        metalness: 0,
-        roughness: 0.5
-    })
-)
-floor.receiveShadow = true
-floor.rotation.x = - Math.PI * 0.5
-scene.add(floor)
-
-/**
- * Lights
- */
-const ambientLight = new THREE.AmbientLight(0xffffff, 2.4)
-scene.add(ambientLight)
-
-const directionalLight = new THREE.DirectionalLight(0xffffff, 1.8)
-directionalLight.castShadow = true
-directionalLight.shadow.mapSize.set(1024, 1024)
-directionalLight.shadow.camera.far = 15
-directionalLight.shadow.camera.left = - 7
-directionalLight.shadow.camera.top = 7
-directionalLight.shadow.camera.right = 7
-directionalLight.shadow.camera.bottom = - 7
-directionalLight.position.set(5, 5, 5)
-scene.add(directionalLight)
 
 /**
  * Sizes
@@ -95,12 +145,12 @@ window.addEventListener('resize', () =>
  */
 // Base camera
 const camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height, 0.1, 100)
-camera.position.set(- 8, 4, 8)
+camera.position.set(4, 5, 4)
 scene.add(camera)
 
 // Controls
 const controls = new OrbitControls(camera, canvas)
-controls.target.set(0, 1, 0)
+controls.target.y = 3.5
 controls.enableDamping = true
 
 /**
@@ -109,8 +159,6 @@ controls.enableDamping = true
 const renderer = new THREE.WebGLRenderer({
     canvas: canvas
 })
-renderer.shadowMap.enabled = true
-renderer.shadowMap.type = THREE.PCFSoftShadowMap
 renderer.setSize(sizes.width, sizes.height)
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 
@@ -118,17 +166,15 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
  * Animate
  */
 const clock = new THREE.Clock()
-let previousTime = 0
-
 const tick = () =>
 {
+    // Time
     const elapsedTime = clock.getElapsedTime()
-    const deltaTime = elapsedTime - previousTime
-    previousTime = elapsedTime
 
-    if(mixer)
+    if(holyDonut)
     {
-        mixer.update(deltaTime)
+        holyDonut.rotation.x = Math.sin(elapsedTime) * 2
+        cubeCamera.update(renderer, scene)
     }
 
     // Update controls
