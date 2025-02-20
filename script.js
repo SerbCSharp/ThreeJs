@@ -3,13 +3,12 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import GUI from 'lil-gui'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js'
-import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js'
-import { GroundedSkybox } from 'three/examples/jsm/objects/GroundedSkybox.js'
 
+/**
+ * Loaders
+ */
 const gltfLoader = new GLTFLoader()
-const exrLoader = new EXRLoader();
-const cubeTextureLoader = new THREE.CubeTextureLoader()
-const rgbeLoader = new RGBELoader();
+const rgbeLoader = new RGBELoader()
 const textureLoader = new THREE.TextureLoader()
 
 /**
@@ -17,6 +16,7 @@ const textureLoader = new THREE.TextureLoader()
  */
 // Debug
 const gui = new GUI()
+const global = {}
 
 // Canvas
 const canvas = document.querySelector('canvas.webgl')
@@ -24,98 +24,125 @@ const canvas = document.querySelector('canvas.webgl')
 // Scene
 const scene = new THREE.Scene()
 
-// const updateAllMaterials = () =>
-// {
-//     scene.traverse((child) => 
-//     {
-//         if(child.isMesh && child.material.isMeshStandardMaterial)
-//         {
-
-//         }
-//     })
-// }
-
-// const environmentMap = cubeTextureLoader.load([
-//     '/environmentMaps/0/px.png',
-//     '/environmentMaps/0/nx.png',
-//     '/environmentMaps/0/py.png',
-//     '/environmentMaps/0/ny.png',
-//     '/environmentMaps/0/pz.png',
-//     '/environmentMaps/0/nz.png'
-// ])
-
-// scene.environment = environmentMap
-// scene.background = environmentMap
-// scene.backgroundBlurriness = 0
-// scene.backgroundIntensity = 1
-
-// rgbeLoader.load('/environmentMaps/blender2k.hdr', (environmentMap) =>
-// {
-//     environmentMap.mapping = THREE.EquirectangularReflectionMapping
-//     scene.environment = environmentMap
-//     //scene.background = environmentMap
-// })
-
-// exrLoader.load('/environmentMaps/nvidiaCanvas-4k.exr', (environmentMap) =>
-// {
-//     environmentMap.mapping = THREE.EquirectangularReflectionMapping
-//     scene.environment = environmentMap
-//     scene.background = environmentMap
-// })
-
-// const environmentMap = textureLoader.load('/environmentMaps/blockadesLabsSkybox/anime_art_style_japan_streets_with_cherry_blossom_.jpg')
-// environmentMap.mapping = THREE.EquirectangularReflectionMapping
-// environmentMap.colorSpace = THREE.SRGBColorSpace
-// scene.environment = environmentMap
-// scene.background = environmentMap
-
-// rgbeLoader.load('/environmentMaps/2/2k.hdr', (environmentMap) =>
-// {
-//     environmentMap.mapping = THREE.EquirectangularReflectionMapping
-//     scene.environment = environmentMap
-//     const skybox = new GroundedSkybox(environmentMap, 11, 120)
-//     //skybox.scale.setScalar(50)
-//     scene.add(skybox)
-// })
-
-const environmentMap = textureLoader.load('/environmentMaps/blockadesLabsSkybox/interior_views_cozy_wood_cabin_with_cauldron_and_p.jpg')
-environmentMap.mapping = THREE.EquirectangularReflectionMapping
-environmentMap.colorSpace = THREE.SRGBColorSpace
-scene.background = environmentMap
-
-const holyDonut = new THREE.Mesh(
-    new THREE.TorusGeometry(8, 0.5),
-    new THREE. MeshBasicMaterial({ color: new THREE.Color(10, 4, 2)}))
-holyDonut.layers.enable(1)
-holyDonut.position.y = 3.5
-scene.add(holyDonut)
-
-const cubeRenderTarjet = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType })
-scene.environment = cubeRenderTarjet.texture
-
-const cubeCamera = new THREE.CubeCamera(0.1, 100, cubeRenderTarjet)
-cubeCamera.layers.set(1)
+/**
+ * Update all materials
+ */
+const updateAllMaterials = () =>
+{
+    scene.traverse((child) =>
+    {
+        if(child.isMesh && child.material.isMeshStandardMaterial)
+        {
+            child.material.envMapIntensity = global.envMapIntensity
+            child.castShadow = true
+            child.receiveShadow = true
+        }
+    })
+}
 
 /**
- * Torus Knot
+ * Environment map
  */
-const torusKnot = new THREE.Mesh(
-    new THREE.TorusKnotGeometry(1, 0.4, 100, 16),
-    new THREE.MeshStandardMaterial({ roughness: 0, metalness: 1, color: 0xaaaaaa})
-)
-//torusKnot.material.envMap = environmentMap
-torusKnot.position.x = - 4
-torusKnot.position.y = 4
-scene.add(torusKnot)
+// Global intensity
+global.envMapIntensity = 1
+gui
+    .add(global, 'envMapIntensity')
+    .min(0)
+    .max(10)
+    .step(0.001)
+    .onChange(updateAllMaterials)
 
-gltfLoader.load('/models/FlightHelmet/glTF/FlightHelmet.gltf',
-    (gltf) => 
+// HDR (RGBE) equirectangular
+rgbeLoader.load('/environmentMaps/0/2k.hdr', (environmentMap) =>
+{
+    environmentMap.mapping = THREE.EquirectangularReflectionMapping
+
+    scene.background = environmentMap
+    scene.environment = environmentMap
+})
+
+const directionalLight = new THREE.DirectionalLight('#ffffff', 1)
+directionalLight.position.set(-4, 6.5, 2.5)
+directionalLight.castShadow = true
+directionalLight.shadow.camera.far = 15
+directionalLight.shadow.normalBias = 0.027
+directionalLight.shadow.bias = - 0.004
+directionalLight.shadow.mapSize.set(512, 512)
+scene.add(directionalLight)
+
+// const directionalLightHelper = new THREE.CameraHelper(directionalLight.shadow.camera)
+// scene.add(directionalLightHelper)
+
+directionalLight.target.position.set(0, 4, 0)
+directionalLight.target.updateWorldMatrix()
+
+/**
+ * Models
+ */
+// Helmet
+// gltfLoader.load(
+//     '/models/FlightHelmet/glTF/FlightHelmet.gltf',
+//     (gltf) =>
+//     {
+//         gltf.scene.scale.set(10, 10, 10)
+//         scene.add(gltf.scene)
+
+//         updateAllMaterials()
+//     }
+// )
+
+gltfLoader.load(
+    '/models/hamburger.glb',
+    (gltf) =>
     {
-        gltf.scene.scale.set(10, 10, 10)
+        gltf.scene.scale.set(0.4, 0.4, 0.4)
+        gltf.scene.position.set(0, 2.5, 0)
         scene.add(gltf.scene)
-        //updateAllMaterials()
+
+        updateAllMaterials()
     }
 )
+
+const floorColorTexture = textureLoader.load('/textures/wood_cabinet_worn_long/wood_cabinet_worn_long_diff_1k.jpg')
+const floorNormalTexture = textureLoader.load('/textures/wood_cabinet_worn_long/wood_cabinet_worn_long_nor_gl_1k.png')
+const floorAORoughnessMetalnessTexture = textureLoader.load('/textures/wood_cabinet_worn_long/wood_cabinet_worn_long_arm_1k.jpg')
+
+floorColorTexture.colorSpace = THREE.SRGBColorSpace
+
+const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(8, 8),
+    new THREE.MeshStandardMaterial({
+        map: floorColorTexture,
+        normalMap: floorNormalTexture,
+        aoMap: floorAORoughnessMetalnessTexture,
+        roughnessMap: floorAORoughnessMetalnessTexture,
+        metalnessMap: floorAORoughnessMetalnessTexture,
+    })
+)
+floor.rotation.x = - Math.PI * 0.5
+scene.add(floor)
+
+const wallColorTexture = textureLoader.load('/textures/castle_brick_broken_06/castle_brick_broken_06_diff_1k.jpg')
+const wallNormalTexture = textureLoader.load('/textures/castle_brick_broken_06/castle_brick_broken_06_nor_gl_1k.png')
+const wallAORoughnessMetalnessTexture = textureLoader.load('/textures/castle_brick_broken_06/castle_brick_broken_06_arm_1k.jpg')
+
+wallColorTexture.colorSpace = THREE.SRGBColorSpace
+
+const wall = new THREE.Mesh(
+    new THREE.PlaneGeometry(8, 8),
+    new THREE.MeshStandardMaterial({
+        map: wallColorTexture,
+        normalMap: wallNormalTexture,
+        aoMap: wallAORoughnessMetalnessTexture,
+        roughnessMap: wallAORoughnessMetalnessTexture,
+        metalnessMap: wallAORoughnessMetalnessTexture,
+    })
+)
+wall.position.y = 4
+wall.position.z = - 4
+scene.add(wall)
+
+
 
 /**
  * Sizes
@@ -157,26 +184,33 @@ controls.enableDamping = true
  * Renderer
  */
 const renderer = new THREE.WebGLRenderer({
-    canvas: canvas
+    canvas: canvas,
+    antialias: true
 })
 renderer.setSize(sizes.width, sizes.height)
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 
+renderer.toneMapping = THREE.ReinhardToneMapping
+renderer.toneMappingExposure = 3
+
+gui.add(renderer, 'toneMapping', {
+    No: THREE.NoToneMapping,
+    Linear: THREE.LinearToneMapping,
+    Reinhard: THREE.ReinhardToneMapping,
+    Cineon: THREE.CineonToneMapping,
+    ACESFilmic: THREE.ACESFilmicToneMapping,
+})
+
+gui.add(renderer, 'toneMappingExposure').min(0).max(10).step(0.001)
+
+renderer.shadowMap.enabled = true
+renderer.shadowMap.type = THREE.PCFShadowMap
+
 /**
  * Animate
  */
-const clock = new THREE.Clock()
 const tick = () =>
 {
-    // Time
-    const elapsedTime = clock.getElapsedTime()
-
-    if(holyDonut)
-    {
-        holyDonut.rotation.x = Math.sin(elapsedTime) * 2
-        cubeCamera.update(renderer, scene)
-    }
-
     // Update controls
     controls.update()
 
