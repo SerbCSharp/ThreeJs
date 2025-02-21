@@ -87,13 +87,13 @@ gltfLoader.load(
 /**
  * Floor
  */
-const floorColorTexture = textureLoader.load('textures/dirt/color.jpg')
+const floorColorTexture = textureLoader.load('/textures/dirt/color.jpg')
 floorColorTexture.colorSpace = THREE.SRGBColorSpace
 floorColorTexture.repeat.set(1.5, 1.5)
 floorColorTexture.wrapS = THREE.RepeatWrapping
 floorColorTexture.wrapT = THREE.RepeatWrapping
 
-const floorNormalTexture = textureLoader.load('textures/dirt/normal.jpg')
+const floorNormalTexture = textureLoader.load('/textures/dirt/normal.jpg')
 floorNormalTexture.repeat.set(1.5, 1.5)
 floorNormalTexture.wrapS = THREE.RepeatWrapping
 floorNormalTexture.wrapT = THREE.RepeatWrapping
