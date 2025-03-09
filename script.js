@@ -1,15 +1,15 @@
 import * as THREE from 'three'
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import GUI from 'lil-gui'
-import waterVertexShader from './shaders/water/vertex.glsl'
-import waterFragmentShader from './shaders/water/fragment.glsl'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import halftoneVertexShader from './shaders/halftone/vertex.glsl'
+import halftoneFragmentShader from './shaders/halftone/fragment.glsl'
 
 /**
  * Base
  */
 // Debug
-const gui = new GUI({ width: 340 })
-const debugObject = {}
+const gui = new GUI()
 
 // Canvas
 const canvas = document.querySelector('canvas.webgl')
@@ -17,69 +17,16 @@ const canvas = document.querySelector('canvas.webgl')
 // Scene
 const scene = new THREE.Scene()
 
-/**
- * Water
- */
-// Geometry
-const waterGeometry = new THREE.PlaneGeometry(2, 2, 512, 512)
-waterGeometry.deleteAttribute('normal')
-waterGeometry.deleteAttribute('uv')
-
-// Colors
-debugObject.depthColor = '#ff4000'
-debugObject.surfaceColor = '#151c37'
-
-gui.addColor(debugObject, 'depthColor').onChange(() => { waterMaterial.uniforms.uDepthColor.value.set(debugObject.depthColor) })
-gui.addColor(debugObject, 'surfaceColor').onChange(() => { waterMaterial.uniforms.uSurfaceColor.value.set(debugObject.surfaceColor) })
-
-// Material
-const waterMaterial = new THREE.ShaderMaterial({
-    vertexShader: waterVertexShader,
-    fragmentShader: waterFragmentShader,
-    uniforms:
-    {
-        uTime: { value: 0 },
-        
-        uBigWavesElevation: { value: 0.2 },
-        uBigWavesFrequency: { value: new THREE.Vector2(4, 1.5) },
-        uBigWavesSpeed: { value: 0.75 },
-
-        uSmallWavesElevation: { value: 0.15 },
-        uSmallWavesFrequency: { value: 3 },
-        uSmallWavesSpeed: { value: 0.2 },
-        uSmallIterations: { value: 4 },
-
-        uDepthColor: { value: new THREE.Color(debugObject.depthColor) },
-        uSurfaceColor: { value: new THREE.Color(debugObject.surfaceColor) },
-        uColorOffset: { value: 0.925 },
-        uColorMultiplier: { value: 1 }
-    }
-})
-
-gui.add(waterMaterial.uniforms.uBigWavesElevation, 'value').min(0).max(1).step(0.001).name('uBigWavesElevation')
-gui.add(waterMaterial.uniforms.uBigWavesFrequency.value, 'x').min(0).max(10).step(0.001).name('uBigWavesFrequencyX')
-gui.add(waterMaterial.uniforms.uBigWavesFrequency.value, 'y').min(0).max(10).step(0.001).name('uBigWavesFrequencyY')
-gui.add(waterMaterial.uniforms.uBigWavesSpeed, 'value').min(0).max(4).step(0.001).name('uBigWavesSpeed')
-
-gui.add(waterMaterial.uniforms.uSmallWavesElevation, 'value').min(0).max(1).step(0.001).name('uSmallWavesElevation')
-gui.add(waterMaterial.uniforms.uSmallWavesFrequency, 'value').min(0).max(30).step(0.001).name('uSmallWavesFrequency')
-gui.add(waterMaterial.uniforms.uSmallWavesSpeed, 'value').min(0).max(4).step(0.001).name('uSmallWavesSpeed')
-gui.add(waterMaterial.uniforms.uSmallIterations, 'value').min(0).max(5).step(1).name('uSmallIterations')
-
-gui.add(waterMaterial.uniforms.uColorOffset, 'value').min(0).max(1).step(0.001).name('uColorOffset')
-gui.add(waterMaterial.uniforms.uColorMultiplier, 'value').min(0).max(10).step(0.001).name('uColorMultiplier')
-
-// Mesh
-const water = new THREE.Mesh(waterGeometry, waterMaterial)
-water.rotation.x = - Math.PI * 0.5
-scene.add(water)
+// Loaders
+const gltfLoader = new GLTFLoader()
 
 /**
  * Sizes
  */
 const sizes = {
     width: window.innerWidth,
-    height: window.innerHeight
+    height: window.innerHeight,
+    pixelRatio: Math.min(window.devicePixelRatio, 2)
 }
 
 window.addEventListener('resize', () =>
@@ -87,6 +34,9 @@ window.addEventListener('resize', () =>
     // Update sizes
     sizes.width = window.innerWidth
     sizes.height = window.innerHeight
+    sizes.pixelRatio = Math.min(window.devicePixelRatio, 2)
+
+    material.uniforms.uResolution.value.set(sizes.width * sizes.pixelRatio, sizes.height * sizes.pixelRatio)
 
     // Update camera
     camera.aspect = sizes.width / sizes.height
@@ -94,15 +44,17 @@ window.addEventListener('resize', () =>
 
     // Update renderer
     renderer.setSize(sizes.width, sizes.height)
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.setPixelRatio(sizes.pixelRatio)
 })
 
 /**
  * Camera
  */
 // Base camera
-const camera = new THREE.PerspectiveCamera(75, sizes.width / sizes.height, 0.1, 100)
-camera.position.set(1, 1, 1)
+const camera = new THREE.PerspectiveCamera(25, sizes.width / sizes.height, 0.1, 100)
+camera.position.x = 7
+camera.position.y = 7
+camera.position.z = 7
 scene.add(camera)
 
 // Controls
@@ -112,12 +64,98 @@ controls.enableDamping = true
 /**
  * Renderer
  */
+const rendererParameters = {}
+rendererParameters.clearColor = '#26132f'
+
 const renderer = new THREE.WebGLRenderer({
-    canvas: canvas
+    canvas: canvas,
+    antialias: true
 })
-renderer.toneMapping = THREE.ACESFilmicToneMapping
+renderer.setClearColor(rendererParameters.clearColor)
 renderer.setSize(sizes.width, sizes.height)
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+renderer.setPixelRatio(sizes.pixelRatio)
+
+gui
+    .addColor(rendererParameters, 'clearColor')
+    .onChange(() =>
+    {
+        renderer.setClearColor(rendererParameters.clearColor)
+    })
+
+/**
+ * Material
+ */
+const materialParameters = {}
+materialParameters.color = '#ff794d'
+materialParameters.shadowColor = '#8e19b8'
+materialParameters.lightColor = '#e5ffe0'
+
+const material = new THREE.ShaderMaterial({
+    vertexShader: halftoneVertexShader,
+    fragmentShader: halftoneFragmentShader,
+    uniforms:
+    {
+        uColor: new THREE.Uniform(new THREE.Color(materialParameters.color)),
+        uShadeColor: new THREE.Uniform(new THREE.Color(materialParameters.shadeColor)),
+        uResolution: new THREE.Uniform(new THREE.Vector2(sizes.width * sizes.pixelRatio, sizes.height * sizes.pixelRatio)),
+        uShadowRepetitions: new THREE.Uniform(100),
+        uShadowColor: new THREE.Uniform(new THREE.Color(materialParameters.shadowColor)),
+        uLightRepetitions: new THREE.Uniform(130),
+        uLightColor: new THREE.Uniform(new THREE.Color(materialParameters.lightColor)),
+    }
+})
+
+gui
+    .addColor(materialParameters, 'color')
+    .onChange(() =>
+    {
+        material.uniforms.uColor.value.set(materialParameters.color)
+    })
+gui.add(material.uniforms.uShadowRepetitions, 'value').min(1).max(300).step(1)
+gui.addColor(materialParameters, 'shadowColor').onChange(() =>
+    {
+        material.uniforms.uShadowColor.value.set(materialParameters.shadowColor)
+    })
+gui.add(material.uniforms.uLightRepetitions, 'value').min(1).max(300).step(1)
+gui.addColor(materialParameters, 'lightColor').onChange(() =>
+    {
+        material.uniforms.uShadowColor.value.set(materialParameters.lightColor)
+    })
+
+/**
+ * Objects
+ */
+// Torus knot
+const torusKnot = new THREE.Mesh(
+    new THREE.TorusKnotGeometry(0.6, 0.25, 128, 32),
+    material
+)
+torusKnot.position.x = 3
+scene.add(torusKnot)
+
+// Sphere
+const sphere = new THREE.Mesh(
+    new THREE.SphereGeometry(),
+    material
+)
+sphere.position.x = - 3
+scene.add(sphere)
+
+// Suzanne
+let suzanne = null
+gltfLoader.load(
+    './suzanne.glb',
+    (gltf) =>
+    {
+        suzanne = gltf.scene
+        suzanne.traverse((child) =>
+        {
+            if(child.isMesh)
+                child.material = material
+        })
+        scene.add(suzanne)
+    }
+)
 
 /**
  * Animate
@@ -128,8 +166,18 @@ const tick = () =>
 {
     const elapsedTime = clock.getElapsedTime()
 
-    // Water
-    waterMaterial.uniforms.uTime.value = elapsedTime
+    // Rotate objects
+    if(suzanne)
+    {
+        suzanne.rotation.x = - elapsedTime * 0.1
+        suzanne.rotation.y = elapsedTime * 0.2
+    }
+
+    sphere.rotation.x = - elapsedTime * 0.1
+    sphere.rotation.y = elapsedTime * 0.2
+
+    torusKnot.rotation.x = - elapsedTime * 0.1
+    torusKnot.rotation.y = elapsedTime * 0.2
 
     // Update controls
     controls.update()
