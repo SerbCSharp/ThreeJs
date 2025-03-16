@@ -1,17 +1,12 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import GUI from 'lil-gui'
-import earthVertexShader from './shaders/earth/vertex.glsl'
-import earthFragmentShader from './shaders/earth/fragment.glsl'
-import atmosphereVertexShader from './shaders/atmosphere/vertex.glsl'
-import atmosphereFragmentShader from './shaders/atmosphere/fragment.glsl'
+import particlesVertexShader from './shaders/particles/vertex.glsl'
+import particlesFragmentShader from './shaders/particles/fragment.glsl'
+import { diffuseColor } from 'three/tsl'
 
 /**
  * Base
  */
-// Debug
-const gui = new GUI()
-
 // Canvas
 const canvas = document.querySelector('canvas.webgl')
 
@@ -20,90 +15,6 @@ const scene = new THREE.Scene()
 
 // Loaders
 const textureLoader = new THREE.TextureLoader()
-
-/**
- * Earth
- */
-
-const earthParameters = {}
-earthParameters.atmosphereDayColor = '#00aaff'
-earthParameters.atmosphereTwilightColor = '#ff6000'
-
-gui.addColor(earthParameters, 'atmosphereDayColor').onChange(() =>
-{
-    earthMaterial.uniforms.uatmosphereDayColor.value.set(earthParameters.atmosphereDayColor)
-    atmosphereMaterial.uniforms.uatmosphereDayColor.value.set(earthParameters.atmosphereDayColor)
-})
-
-gui.addColor(earthParameters, 'atmosphereTwilightColor').onChange(() =>
-    {
-        earthMaterial.uniforms.uatmosphereTwilightColor.value.set(earthParameters.atmosphereTwilightColor)
-        atmosphereMaterial.uniforms.uatmosphereTwilightColor.value.set(earthParameters.atmosphereTwilightColor)
-    })
-    
-const eartDayTexture = textureLoader.load('./earth/day.jpg')
-eartDayTexture.colorSpace = THREE.SRGBColorSpace
-eartDayTexture.anisotropy = 8
-const eartNightTexture = textureLoader.load('./earth/night.jpg')
-eartNightTexture.colorSpace = THREE.SRGBColorSpace
-eartNightTexture.anisotropy = 8
-const eartSpecularCloudsTexture = textureLoader.load('./earth/specularClouds.jpg')
-eartSpecularCloudsTexture.anisotropy = 8
-
-// Mesh
-const earthGeometry = new THREE.SphereGeometry(2, 64, 64)
-const earthMaterial = new THREE.ShaderMaterial({
-    vertexShader: earthVertexShader,
-    fragmentShader: earthFragmentShader,
-    uniforms:
-    {
-        uDayTexture: new THREE.Uniform(eartDayTexture),
-        uNightTexture: new THREE.Uniform(eartNightTexture),
-        uSpecularCloudsTexture: new THREE.Uniform(eartSpecularCloudsTexture),
-        uSunDirection: new THREE.Uniform(new THREE.Vector3(0, 0, 1)),
-        uatmosphereDayColor: new THREE.Uniform(new THREE.Color(earthParameters.atmosphereDayColor)),
-        uatmosphereTwilightColor: new THREE.Uniform(new THREE.Color(earthParameters.atmosphereTwilightColor)),
-    }
-})
-const earth = new THREE.Mesh(earthGeometry, earthMaterial)
-scene.add(earth)
-
-const atmosphereMaterial = new THREE.ShaderMaterial({
-    side: THREE.BackSide,
-    transparent: true,
-    vertexShader: atmosphereVertexShader,
-    fragmentShader: atmosphereFragmentShader,
-    uniforms:
-    {
-        uSunDirection: new THREE.Uniform(new THREE.Vector3(0, 0, 1)),
-        uatmosphereDayColor: new THREE.Uniform(new THREE.Color(earthParameters.atmosphereDayColor)),
-        uatmosphereTwilightColor: new THREE.Uniform(new THREE.Color(earthParameters.atmosphereTwilightColor)),
-    }    
-})
-const atmosphere = new THREE.Mesh(earthGeometry, atmosphereMaterial)
-atmosphere.scale.set(1.04, 1.04, 1.04)
-scene.add(atmosphere)
-
-const sunSpherical = new THREE.Spherical(1, Math.PI * 0.5, 0.5)
-const sunDirection = new THREE.Vector3()
-
-const debugSun = new THREE.Mesh(
-    new THREE.IcosahedronGeometry(0.1, 2),
-    new THREE.MeshBasicMaterial()
-)
-scene.add(debugSun)
-
-const updateSun = () =>
-{
-    sunDirection.setFromSpherical(sunSpherical)
-    debugSun.position.copy(sunDirection).multiplyScalar(5)
-    earthMaterial.uniforms.uSunDirection.value.copy(sunDirection)
-    atmosphereMaterial.uniforms.uSunDirection.value.copy(sunDirection)
-}
-updateSun()
-
-gui.add(sunSpherical, 'phi').min(0).max(Math.PI).onChange(updateSun)
-gui.add(sunSpherical, 'theta').min(- Math.PI).max(Math.PI).onChange(updateSun)
 
 /**
  * Sizes
@@ -121,6 +32,9 @@ window.addEventListener('resize', () =>
     sizes.height = window.innerHeight
     sizes.pixelRatio = Math.min(window.devicePixelRatio, 2)
 
+    // Materials
+    particlesMaterial.uniforms.uResolution.value.set(sizes.width * sizes.pixelRatio, sizes.height * sizes.pixelRatio)
+
     // Update camera
     camera.aspect = sizes.width / sizes.height
     camera.updateProjectionMatrix()
@@ -134,10 +48,8 @@ window.addEventListener('resize', () =>
  * Camera
  */
 // Base camera
-const camera = new THREE.PerspectiveCamera(25, sizes.width / sizes.height, 0.1, 100)
-camera.position.x = 12
-camera.position.y = 5
-camera.position.z = 4
+const camera = new THREE.PerspectiveCamera(35, sizes.width / sizes.height, 0.1, 100)
+camera.position.set(0, 0, 18)
 scene.add(camera)
 
 // Controls
@@ -151,23 +63,115 @@ const renderer = new THREE.WebGLRenderer({
     canvas: canvas,
     antialias: true
 })
+renderer.setClearColor('#181818')
 renderer.setSize(sizes.width, sizes.height)
 renderer.setPixelRatio(sizes.pixelRatio)
-renderer.setClearColor('#000011')
+
+const displacement = {}
+displacement.canvas = document.createElement('canvas')
+displacement.canvas.width = 128
+displacement.canvas.height = 128
+// displacement.canvas.style.position = 'fixed'
+// displacement.canvas.style.width = '256px'
+// displacement.canvas.style.height = '256px'
+// displacement.canvas.style.top = 0
+// displacement.canvas.style.lift = 0
+// displacement.canvas.style.zIndex = 10
+// document.body.append(displacement.canvas)
+
+
+displacement.context = displacement.canvas.getContext('2d')
+displacement.context.fillRect(0, 0, displacement.canvas.width, displacement.canvas.height)
+displacement.glowImage = new Image()
+displacement.glowImage.src = './glow.png'
+
+displacement.interactivePlane = new THREE.Mesh(
+    new THREE.PlaneGeometry(10, 10),
+    new THREE.MeshBasicMaterial({ color: 'red', side: THREE.DoubleSide})
+)
+displacement.interactivePlane.visible = false
+scene.add(displacement.interactivePlane)
+displacement.raycaster = new THREE.Raycaster()
+displacement.screenCursor = new THREE.Vector2(9999, 9999)
+displacement.canvasCursor = new THREE.Vector2(9999, 9999)
+displacement.canvasCursorPrevious = new THREE.Vector2(9999, 9999)
+
+window.addEventListener('pointermove', (event) =>
+{
+    displacement.screenCursor.x = (event.clientX / sizes.width) * 2 - 1
+    displacement.screenCursor.y = - (event.clientY / sizes.height) * 2 + 1
+})
+
+displacement.texture = new THREE.CanvasTexture(displacement.canvas)
+
+/**
+ * Particles
+ */
+const particlesGeometry = new THREE.PlaneGeometry(10, 10, 128, 128)
+particlesGeometry.setIndex(null)
+particlesGeometry.deleteAttribute('normal')
+
+const intensitiesArray = new Float32Array(particlesGeometry.attributes.position.count)
+const anglesArray = new Float32Array(particlesGeometry.attributes.position.count)
+for(let i = 0; i < particlesGeometry.attributes.position.count; i++)
+{
+    intensitiesArray[i] = Math.random()
+    anglesArray[i] = Math.random() * Math.PI * 2
+}
+particlesGeometry.setAttribute('aIntensity', new THREE.BufferAttribute(intensitiesArray, 1))
+particlesGeometry.setAttribute('aAngle', new THREE.BufferAttribute(anglesArray, 1))
+
+const particlesMaterial = new THREE.ShaderMaterial({
+    vertexShader: particlesVertexShader,
+    fragmentShader: particlesFragmentShader,
+    uniforms:
+    {
+        uResolution: new THREE.Uniform(new THREE.Vector2(sizes.width * sizes.pixelRatio, sizes.height * sizes.pixelRatio)),
+        uPictureTexture: new THREE.Uniform(textureLoader.load('./picture-1.png')),
+        uDisplacementTexture: new THREE.Uniform(displacement.texture)
+    },
+    //blending: THREE.AdditiveBlending
+})
+const particles = new THREE.Points(particlesGeometry, particlesMaterial)
+scene.add(particles)
 
 /**
  * Animate
  */
-const clock = new THREE.Clock()
-
 const tick = () =>
 {
-    const elapsedTime = clock.getElapsedTime()
-
-    earth.rotation.y = elapsedTime * 0.1
-
     // Update controls
     controls.update()
+
+    displacement.raycaster.setFromCamera(displacement.screenCursor, camera)
+    const intersections = displacement.raycaster.intersectObject(displacement.interactivePlane)
+    if(intersections.length)
+    {
+        const uv = intersections[0].uv
+        displacement.canvasCursor.x = uv.x * displacement.canvas.width
+        displacement.canvasCursor.y = (1 - uv.y) * displacement.canvas.height
+    }
+
+    displacement.context.globalCompositeOperation = 'source-over'
+    displacement.context.globalAlpha = 0.02
+    displacement.context.fillRect(0, 0, displacement.canvas.width, displacement.canvas.height)
+
+    const cursorDistance = displacement.canvasCursorPrevious.distanceTo(displacement.canvasCursor)
+    displacement.canvasCursorPrevious.copy(displacement.canvasCursor)
+    const alpha = Math.min(cursorDistance * 0.1, 1)
+
+    const glowSize = displacement.canvas.width * 0.25
+    displacement.context.globalCompositeOperation = 'lighten'
+    displacement.context.globalAlpha = alpha
+    displacement.context.drawImage(
+        displacement.glowImage,
+        displacement.canvasCursor.x - glowSize * 0.5,
+        displacement.canvasCursor.y - glowSize * 0.5,
+        glowSize,
+        glowSize
+        )
+
+    displacement.texture.needsUpdate = true
 
     // Render
     renderer.render(scene, camera)
