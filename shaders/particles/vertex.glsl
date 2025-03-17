@@ -1,36 +1,38 @@
 uniform vec2 uResolution;
-uniform sampler2D uPictureTexture;
-uniform sampler2D uDisplacementTexture;
+uniform float uSize;
+uniform float uProgress;
+uniform vec3 uColorA;
+uniform vec3 uColorB;
 
-attribute float aIntensity;
-attribute float aAngle;
+attribute vec3 aPositionTarget;
+attribute float aSize;
 
 varying vec3 vColor;
 
+#include ../includes/simplexNoise3d.glsl
+
 void main()
 {
-    vec3 newPosition = position;
-    float displacementIntensity = texture(uDisplacementTexture, uv).r;
-    displacementIntensity = smoothstep(0.1, 0.3, displacementIntensity);
-    vec3 displacement = vec3(cos(aAngle) * 0.2, sin(aAngle) * 0.2, 1.0);
+    float noiseOrigin = simplexNoise3d(position * 0.2);
+    float noiseTarget = simplexNoise3d(aPositionTarget * 0.2);
+    float noise = mix(noiseOrigin, noiseTarget, uProgress);
+    noise = smoothstep(-1.0, 1.0, noise);
 
-    displacement = normalize(displacement);
-    displacement *= displacementIntensity;
-    displacement *= 3.0;
-    displacement *= aIntensity;
-    newPosition += displacement;
+    float duration = 0.4;
+    float delay = (1.0 - duration) * noise;
+    float end = delay + duration;
 
+    float progress = smoothstep(delay, end, uProgress);
+    vec3 mixedPosirion = mix(position, aPositionTarget, progress);
     // Final position
-    vec4 modelPosition = modelMatrix * vec4(newPosition, 1.0);
+    vec4 modelPosition = modelMatrix * vec4(mixedPosirion, 1.0);
     vec4 viewPosition = viewMatrix * modelPosition;
     vec4 projectedPosition = projectionMatrix * viewPosition;
     gl_Position = projectedPosition;
 
-    float pictureIntensity = texture(uPictureTexture, uv).r;
-
     // Point size
-    gl_PointSize = 0.15 * pictureIntensity * uResolution.y;
+    gl_PointSize = aSize * uSize * uResolution.y;
     gl_PointSize *= (1.0 / - viewPosition.z);
 
-    vColor = vec3(pow(pictureIntensity, 2.0));
+    vColor = mix(uColorA, uColorB, noise);
 }
