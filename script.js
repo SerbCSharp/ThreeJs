@@ -2,10 +2,11 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js'
+import { GPUComputationRenderer } from 'three/addons/misc/GPUComputationRenderer.js'
 import GUI from 'lil-gui'
-import gsap from 'gsap'
 import particlesVertexShader from './shaders/particles/vertex.glsl'
 import particlesFragmentShader from './shaders/particles/fragment.glsl'
+import gpgpuParticlesShader from './shaders/gpgpu/particles.glsl'
 
 /**
  * Base
@@ -22,7 +23,8 @@ const scene = new THREE.Scene()
 
 // Loaders
 const dracoLoader = new DRACOLoader()
-dracoLoader.setDecoderPath('./draco/')
+dracoLoader.setDecoderPath('/draco/')
+
 const gltfLoader = new GLTFLoader()
 gltfLoader.setDRACOLoader(dracoLoader)
 
@@ -43,8 +45,7 @@ window.addEventListener('resize', () =>
     sizes.pixelRatio = Math.min(window.devicePixelRatio, 2)
 
     // Materials
-    if(particles)
-        particles.material.uniforms.uResolution.value.set(sizes.width * sizes.pixelRatio, sizes.height * sizes.pixelRatio)
+    particles.material.uniforms.uResolution.value.set(sizes.width * sizes.pixelRatio, sizes.height * sizes.pixelRatio)
 
     // Update camera
     camera.aspect = sizes.width / sizes.height
@@ -60,7 +61,7 @@ window.addEventListener('resize', () =>
  */
 // Base camera
 const camera = new THREE.PerspectiveCamera(35, sizes.width / sizes.height, 0.1, 100)
-camera.position.set(0, 0, 8 * 2)
+camera.position.set(4.5, 4, 11)
 scene.add(camera)
 
 // Controls
@@ -74,119 +75,105 @@ const renderer = new THREE.WebGLRenderer({
     canvas: canvas,
     antialias: true,
 })
-
 renderer.setSize(sizes.width, sizes.height)
 renderer.setPixelRatio(sizes.pixelRatio)
 
-debugObject.clearColor = '#160920'
-gui.addColor(debugObject, 'clearColor').onChange(() => { renderer.setClearColor(debugObject.clearColor) })
+debugObject.clearColor = '#29191f'
 renderer.setClearColor(debugObject.clearColor)
 
-let particles = null
-gltfLoader.load('./models.glb', (gltf) =>
+const gltf = await gltfLoader.loadAsync('./model.glb')
+
+const baseGeometry = {}
+baseGeometry.instance = new THREE.SphereGeometry(3)
+baseGeometry.count = baseGeometry.instance.attributes.position.count
+
+const gpgpu = {}
+gpgpu.size = Math.ceil(Math.sqrt(baseGeometry.count))
+gpgpu.computation = new GPUComputationRenderer(gpgpu.size, gpgpu.size, renderer)
+const baseParticlesTexture = gpgpu.computation.createTexture()
+for(let i = 0; i < baseGeometry.count; i++)
 {
-    particles = {}
-    particles.index = 0
+    const i3 = i * 3
+    const i4 = i * 4
+    baseParticlesTexture.image.data[i4 + 0] = baseGeometry.instance.attributes.position.array[i3 + 0]
+    baseParticlesTexture.image.data[i4 + 1] = baseGeometry.instance.attributes.position.array[i3 + 1]
+    baseParticlesTexture.image.data[i4 + 2] = baseGeometry.instance.attributes.position.array[i3 + 2]
+    baseParticlesTexture.image.data[i4 + 3] = 0
+}
 
-    const positions = gltf.scene.children.map(child => child.geometry.attributes.position)
-    particles.maxCount = 0
-    for(const position of positions)
+gpgpu.particlesVariable = gpgpu.computation.addVariable('uParticles', gpgpuParticlesShader, baseParticlesTexture)
+gpgpu.computation.setVariableDependencies(gpgpu.particlesVariable, [ gpgpu.particlesVariable ])
+gpgpu.computation.init()
+
+gpgpu.debug = new THREE.Mesh(
+    new THREE.PlaneGeometry(3, 3),
+    new THREE.MeshBasicMaterial({map: gpgpu.computation.getCurrentRenderTarget(gpgpu.particlesVariable).texture})
+)
+gpgpu.debug.position.x = 3
+scene.add(gpgpu.debug)
+
+/**
+ * Particles
+ */
+const particles = {}
+
+const particlesUvArray = new Float32Array(baseGeometry.count * 2)
+for(let y = 0; y < gpgpu.size; y++)
+{
+    for(let x = 0; x < gpgpu.size; x++)
     {
-        if(position.count > particles.maxCount)
-            particles.maxCount = position.count
+        const i = (y * gpgpu.size) + x
+        const i2 = i * 2
+        const uvX = (x + 0.5) / gpgpu.size
+        const uvY = (y + 0.5) / gpgpu.size
+        particlesUvArray[i2 + 0] = uvX
+        particlesUvArray[i2 + 1] = uvY
     }
+}
 
-    particles.positions = []
-    for(const position of positions)
-        {
-            const originalArray = position.array
-            const newArray = new Float32Array(particles.maxCount * 3)
-            for(let i = 0; i < particles.maxCount; i++)
-            {
-                const i3 = i * 3
-                if(i3 < originalArray.length)
-                {
-                    newArray[i3 + 0] = originalArray[i3 + 0]
-                    newArray[i3 + 1] = originalArray[i3 + 1]
-                    newArray[i3 + 2] = originalArray[i3 + 2]
-                }
-                else
-                {
-                    const randomIndex = Math.floor(position.count * Math.random()) * 3
-                    newArray[i3 + 0] = originalArray[randomIndex + 0]
-                    newArray[i3 + 1] = originalArray[randomIndex + 1]
-                    newArray[i3 + 2] = originalArray[randomIndex + 2]
-                }
-            }
-            particles.positions.push(new THREE.Float32BufferAttribute(newArray, 3))
-        }
-    
-    // Geometry
+particles.geometry = new THREE.BufferGeometry()
+particles.geometry.setDrawRange(0, baseGeometry.count)
+particles.geometry.setAttribute('aParticlesUv', new THREE.BufferAttribute(particlesUvArray, 2))
 
-    const sizesArray = new Float32Array(particles.maxCount)
-    for(let i = 0; i < particles.maxCount; i++)
-        sizesArray[i] = Math.random()
-
-    particles.geometry = new THREE.BufferGeometry()
-    particles.geometry.setAttribute('position', particles.positions[particles.index])
-    particles.geometry.setAttribute('aPositionTarget', particles.positions[3])
-    particles.geometry.setAttribute('aSize', new THREE.BufferAttribute(sizesArray, 1))
-
-    // Material
-    particles.colorA = '#ff7300'
-    particles.colorB = '#0091ff'
-
-    particles.material = new THREE.ShaderMaterial({
-        vertexShader: particlesVertexShader,
-        fragmentShader: particlesFragmentShader,
-        uniforms:
-        {
-            uSize: new THREE.Uniform(0.4),
-            uResolution: new THREE.Uniform(new THREE.Vector2(sizes.width * sizes.pixelRatio, sizes.height * sizes.pixelRatio)),
-            uProgress: new THREE.Uniform(0),
-            uColorA: new THREE.Uniform(new THREE.Color(particles.colorA)),
-            uColorB: new THREE.Uniform(new THREE.Color(particles.colorB)),
-        },
-        blending: THREE.AdditiveBlending,
-        depthWrite: false
-    })
-
-    // Points
-    particles.points = new THREE.Points(particles.geometry, particles.material)
-    particles.points.frustumCulled = false
-    scene.add(particles.points)
-
-    particles.morph = (index) =>
+// Material
+particles.material = new THREE.ShaderMaterial({
+    vertexShader: particlesVertexShader,
+    fragmentShader: particlesFragmentShader,
+    uniforms:
     {
-        particles.geometry.attributes.position = particles.positions[particles.index]
-        particles.geometry.attributes.aPositionTarget = particles.positions[index]
-
-        gsap.fromTo(particles.material.uniforms.uProgress, { value: 0 }, { value: 1, duration: 3, ease: 'linear' })
-
-        particles.index = index
+        uSize: new THREE.Uniform(0.4),
+        uResolution: new THREE.Uniform(new THREE.Vector2(sizes.width * sizes.pixelRatio, sizes.height * sizes.pixelRatio)),
+        uParticlesTexture: new THREE.Uniform()
     }
-
-    particles.morph0 = () => { particles.morph(0) }
-    particles.morph1 = () => { particles.morph(1) }
-    particles.morph2 = () => { particles.morph(2) }
-    particles.morph3 = () => { particles.morph(3) }
-
-    gui.add(particles.material.uniforms.uProgress, 'value').min(0).max(1).step(0.001).name('uProgress').listen()
-    gui.add(particles, 'morph0')
-    gui.add(particles, 'morph1')
-    gui.add(particles, 'morph2')
-    gui.add(particles, 'morph3')
-    gui.addColor(particles, 'colorA').onChange(() => { particles.material.uniforms.uColorA.value.set(particles.colorA) })
-    gui.addColor(particles, 'colorB').onChange(() => { particles.material.uniforms.uColorB.value.set(particles.colorB) })
 })
+
+// Points
+particles.points = new THREE.Points(particles.geometry, particles.material)
+scene.add(particles.points)
+
+/**
+ * Tweaks
+ */
+gui.addColor(debugObject, 'clearColor').onChange(() => { renderer.setClearColor(debugObject.clearColor) })
+gui.add(particles.material.uniforms.uSize, 'value').min(0).max(1).step(0.001).name('uSize')
 
 /**
  * Animate
  */
+const clock = new THREE.Clock()
+let previousTime = 0
+
 const tick = () =>
 {
+    const elapsedTime = clock.getElapsedTime()
+    const deltaTime = elapsedTime - previousTime
+    previousTime = elapsedTime
+    
     // Update controls
     controls.update()
+
+    gpgpu.computation.compute()
+    particles.material.uniforms.uParticlesTexture.value = gpgpu.computation.getCurrentRenderTarget(gpgpu.particlesVariable).texture
 
     // Render normal scene
     renderer.render(scene, camera)
