@@ -81,7 +81,7 @@ renderer.setPixelRatio(sizes.pixelRatio)
 debugObject.clearColor = '#29191f'
 renderer.setClearColor(debugObject.clearColor)
 
-const gltf = await gltfLoader.loadAsync('./model.glb')
+//const gltf = await gltfLoader.loadAsync('./model.glb')
 
 const baseGeometry = {}
 baseGeometry.instance = new THREE.SphereGeometry(3)
