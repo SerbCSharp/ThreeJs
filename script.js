@@ -1,18 +1,19 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js'
-import { GPUComputationRenderer } from 'three/addons/misc/GPUComputationRenderer.js'
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
+import CustomShaderMaterial from 'three-custom-shader-material/vanilla'
 import GUI from 'lil-gui'
-import particlesVertexShader from './shaders/particles/vertex.glsl'
-import particlesFragmentShader from './shaders/particles/fragment.glsl'
-import gpgpuParticlesShader from './shaders/gpgpu/particles.glsl'
+import wobbleVertexShader from './shaders/wobble/vertex.glsl'
+import wobbleFragmentShader from './shaders/wobble/fragment.glsl'
 
 /**
  * Base
  */
 // Debug
-const gui = new GUI({ width: 340 })
+const gui = new GUI({ width: 325 })
 const debugObject = {}
 
 // Canvas
@@ -22,11 +23,125 @@ const canvas = document.querySelector('canvas.webgl')
 const scene = new THREE.Scene()
 
 // Loaders
+const rgbeLoader = new RGBELoader()
 const dracoLoader = new DRACOLoader()
-dracoLoader.setDecoderPath('/draco/')
-
+dracoLoader.setDecoderPath('./draco/')
 const gltfLoader = new GLTFLoader()
 gltfLoader.setDRACOLoader(dracoLoader)
+
+/**
+ * Environment map
+ */
+rgbeLoader.load('./urban_alley_01_1k.hdr', (environmentMap) =>
+{
+    environmentMap.mapping = THREE.EquirectangularReflectionMapping
+
+    scene.background = environmentMap
+    scene.environment = environmentMap
+})
+
+debugObject.colorA = '#0000ff'
+debugObject.colorB = '#ff0000'
+
+const uniforms = {
+    uTime: new THREE.Uniform(0),
+    uPositionFrequency: new THREE.Uniform(0.5),
+    uTimeFrequency: new THREE.Uniform(0.4),
+    uStrength: new THREE.Uniform(0.3),
+    uWarpPositionFrequency: new THREE.Uniform(0.38),
+    uWarpTimeFrequency: new THREE.Uniform(0.12),
+    uWarpStrength: new THREE.Uniform(1.7),
+    uColorA: new THREE.Uniform(new THREE.Color(debugObject.colorA)),
+    uColorB: new THREE.Uniform(new THREE.Color(debugObject.colorB))
+}
+
+/**
+ * Wobble
+ */
+// Material
+const material = new CustomShaderMaterial({
+    baseMaterial: THREE.MeshPhysicalMaterial,
+    vertexShader: wobbleVertexShader,
+    fragmentShader: wobbleFragmentShader,
+    uniforms: uniforms,
+    metalness: 0,
+    roughness: 0.5,
+    color: '#ffffff',
+    transmission: 0,
+    ior: 1.5,
+    thickness: 1.5,
+    transparent: true,
+    wireframe: false
+})
+
+const depthMaterial = new CustomShaderMaterial({
+    baseMaterial: THREE.MeshDepthMaterial,
+    vertexShader: wobbleVertexShader,
+    depthPacking: THREE.RGBADepthPacking,
+    uniforms: uniforms
+})
+
+// Tweaks
+gui.add(uniforms.uPositionFrequency, 'value', 0, 2, 0.001).name('uPositionFrequency')
+gui.add(uniforms.uTimeFrequency, 'value', 0, 2, 0.001).name('uTimeFrequency')
+gui.add(uniforms.uStrength, 'value', 0, 2, 0.001).name('uStrength')
+gui.add(uniforms.uWarpPositionFrequency, 'value', 0, 2, 0.001).name('uWarpPositionFrequency')
+gui.add(uniforms.uWarpTimeFrequency, 'value', 0, 2, 0.001).name('uWarpTimeFrequency')
+gui.add(uniforms.uWarpStrength, 'value', 0, 2, 0.001).name('uWarpStrength')
+gui.addColor(debugObject, 'colorA').onChange(() => uniforms.uColorA.value.set(debugObject.colorA))
+gui.addColor(debugObject, 'colorB').onChange(() => uniforms.uColorB.value.set(debugObject.colorB))
+
+gui.add(material, 'metalness', 0, 1, 0.001)
+gui.add(material, 'roughness', 0, 1, 0.001)
+gui.add(material, 'transmission', 0, 1, 0.001)
+gui.add(material, 'ior', 0, 10, 0.001)
+gui.add(material, 'thickness', 0, 10, 0.001)
+
+// Geometry
+// let geometry = new THREE.IcosahedronGeometry(2.5, 50)
+// geometry = mergeVertices(geometry)
+// const serb = geometry.computeTangents()
+
+// // Mesh
+// const wobble = new THREE.Mesh(geometry, material)
+// wobble.customDepthMaterial = depthMaterial
+// wobble.receiveShadow = true
+// wobble.castShadow = true
+// scene.add(wobble)
+
+gltfLoader.load('./suzanne.glb', (gltf) =>
+{
+    const wobble = gltf.scene.children[0]
+    wobble.material = material
+    wobble.customDepthMaterial = depthMaterial
+    wobble.receiveShadow = true
+    wobble.castShadow = true
+    scene.add(wobble)
+})
+
+/**
+ * Plane
+ */
+const plane = new THREE.Mesh(
+    new THREE.PlaneGeometry(15, 15, 15),
+    new THREE.MeshStandardMaterial()
+)
+plane.receiveShadow = true
+plane.rotation.y = Math.PI
+plane.position.y = - 5
+plane.position.z = 5
+scene.add(plane)
+
+/**
+ * Lights
+ */
+const directionalLight = new THREE.DirectionalLight('#ffffff', 3)
+directionalLight.castShadow = true
+directionalLight.shadow.mapSize.set(1024, 1024)
+directionalLight.shadow.camera.far = 15
+directionalLight.shadow.normalBias = 0.05
+directionalLight.position.set(0.25, 2, - 2.25)
+scene.add(directionalLight)
 
 /**
  * Sizes
@@ -44,9 +159,6 @@ window.addEventListener('resize', () =>
     sizes.height = window.innerHeight
     sizes.pixelRatio = Math.min(window.devicePixelRatio, 2)
 
-    // Materials
-    particles.material.uniforms.uResolution.value.set(sizes.width * sizes.pixelRatio, sizes.height * sizes.pixelRatio)
-
     // Update camera
     camera.aspect = sizes.width / sizes.height
     camera.updateProjectionMatrix()
@@ -61,7 +173,7 @@ window.addEventListener('resize', () =>
  */
 // Base camera
 const camera = new THREE.PerspectiveCamera(35, sizes.width / sizes.height, 0.1, 100)
-camera.position.set(4.5, 4, 11)
+camera.position.set(13, - 3, - 5)
 scene.add(camera)
 
 // Controls
@@ -73,125 +185,30 @@ controls.enableDamping = true
  */
 const renderer = new THREE.WebGLRenderer({
     canvas: canvas,
-    antialias: true,
+    antialias: true
 })
+renderer.shadowMap.enabled = true
+renderer.shadowMap.type = THREE.PCFSoftShadowMap
+renderer.toneMapping = THREE.ACESFilmicToneMapping
+renderer.toneMappingExposure = 1
 renderer.setSize(sizes.width, sizes.height)
 renderer.setPixelRatio(sizes.pixelRatio)
-
-debugObject.clearColor = '#29191f'
-renderer.setClearColor(debugObject.clearColor)
-
-const gltf = await gltfLoader.loadAsync('./model.glb')
-
-const baseGeometry = {}
-baseGeometry.instance = gltf.scene.children[0].geometry
-baseGeometry.count = baseGeometry.instance.attributes.position.count
-
-const gpgpu = {}
-gpgpu.size = Math.ceil(Math.sqrt(baseGeometry.count))
-gpgpu.computation = new GPUComputationRenderer(gpgpu.size, gpgpu.size, renderer)
-const baseParticlesTexture = gpgpu.computation.createTexture()
-for(let i = 0; i < baseGeometry.count; i++)
-{
-    const i3 = i * 3
-    const i4 = i * 4
-    baseParticlesTexture.image.data[i4 + 0] = baseGeometry.instance.attributes.position.array[i3 + 0]
-    baseParticlesTexture.image.data[i4 + 1] = baseGeometry.instance.attributes.position.array[i3 + 1]
-    baseParticlesTexture.image.data[i4 + 2] = baseGeometry.instance.attributes.position.array[i3 + 2]
-    baseParticlesTexture.image.data[i4 + 3] = Math.random()
-}
-
-gpgpu.particlesVariable = gpgpu.computation.addVariable('uParticles', gpgpuParticlesShader, baseParticlesTexture)
-gpgpu.computation.setVariableDependencies(gpgpu.particlesVariable, [ gpgpu.particlesVariable ])
-gpgpu.particlesVariable.material.uniforms.uTime = new THREE.Uniform(0)
-gpgpu.particlesVariable.material.uniforms.uDeltaTime = new THREE.Uniform(0)
-gpgpu.particlesVariable.material.uniforms.uBase = new THREE.Uniform(baseParticlesTexture)
-gpgpu.particlesVariable.material.uniforms.uFlowFieldInfluence = new THREE.Uniform(0.5)
-gpgpu.particlesVariable.material.uniforms.uFlowFieldStrength = new THREE.Uniform(2)
-gpgpu.particlesVariable.material.uniforms.uFlowFieldFrequency = new THREE.Uniform(0.5)
-gpgpu.computation.init()
-
-gpgpu.debug = new THREE.Mesh(
-    new THREE.PlaneGeometry(3, 3),
-    new THREE.MeshBasicMaterial({map: gpgpu.computation.getCurrentRenderTarget(gpgpu.particlesVariable).texture})
-)
-gpgpu.debug.visible = false
-gpgpu.debug.position.x = 3
-scene.add(gpgpu.debug)
-
-/**
- * Particles
- */
-const particles = {}
-
-const particlesUvArray = new Float32Array(baseGeometry.count * 2)
-const sizesArray = new Float32Array(baseGeometry.count)
-for(let y = 0; y < gpgpu.size; y++)
-{
-    for(let x = 0; x < gpgpu.size; x++)
-    {
-        const i = (y * gpgpu.size) + x
-        const i2 = i * 2
-        const uvX = (x + 0.5) / gpgpu.size
-        const uvY = (y + 0.5) / gpgpu.size
-        particlesUvArray[i2 + 0] = uvX
-        particlesUvArray[i2 + 1] = uvY
-        sizesArray[i] = Math.random()
-    }
-}
-
-particles.geometry = new THREE.BufferGeometry()
-particles.geometry.setDrawRange(0, baseGeometry.count)
-particles.geometry.setAttribute('aParticlesUv', new THREE.BufferAttribute(particlesUvArray, 2))
-particles.geometry.setAttribute('aColor', baseGeometry.instance.attributes.color)
-particles.geometry.setAttribute('aSize', new THREE.BufferAttribute(sizesArray, 1))
-
-// Material
-particles.material = new THREE.ShaderMaterial({
-    vertexShader: particlesVertexShader,
-    fragmentShader: particlesFragmentShader,
-    uniforms:
-    {
-        uSize: new THREE.Uniform(0.07),
-        uResolution: new THREE.Uniform(new THREE.Vector2(sizes.width * sizes.pixelRatio, sizes.height * sizes.pixelRatio)),
-        uParticlesTexture: new THREE.Uniform()
-    }
-})
-
-// Points
-particles.points = new THREE.Points(particles.geometry, particles.material)
-scene.add(particles.points)
-
-/**
- * Tweaks
- */
-gui.addColor(debugObject, 'clearColor').onChange(() => { renderer.setClearColor(debugObject.clearColor) })
-gui.add(particles.material.uniforms.uSize, 'value').min(0).max(1).step(0.001).name('uSize')
-gui.add(gpgpu.particlesVariable.material.uniforms.uFlowFieldInfluence, 'value').min(0).max(1).step(0.001).name('uFlowFieldInfluence')
-gui.add(gpgpu.particlesVariable.material.uniforms.uFlowFieldStrength, 'value').min(0).max(10).step(0.001).name('uFlowFieldStrength')
-gui.add(gpgpu.particlesVariable.material.uniforms.uFlowFieldFrequency, 'value').min(0).max(1).step(0.001).name('uFlowFieldFrequency')
 
 /**
  * Animate
  */
 const clock = new THREE.Clock()
-let previousTime = 0
 
 const tick = () =>
 {
     const elapsedTime = clock.getElapsedTime()
-    const deltaTime = elapsedTime - previousTime
-    previousTime = elapsedTime
-    
+
+    uniforms.uTime.value = elapsedTime
+
     // Update controls
     controls.update()
 
-    gpgpu.particlesVariable.material.uniforms.uTime.value = elapsedTime
-    gpgpu.particlesVariable.material.uniforms.uDeltaTime.value = deltaTime
-    gpgpu.computation.compute()
-    particles.material.uniforms.uParticlesTexture.value = gpgpu.computation.getCurrentRenderTarget(gpgpu.particlesVariable).texture
-
-    // Render normal scene
+    // Render
     renderer.render(scene, camera)
 
     // Call tick again on the next frame
