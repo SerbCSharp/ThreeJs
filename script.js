@@ -3,11 +3,10 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js'
-import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js'
 import CustomShaderMaterial from 'three-custom-shader-material/vanilla'
 import GUI from 'lil-gui'
-import wobbleVertexShader from './shaders/wobble/vertex.glsl'
-import wobbleFragmentShader from './shaders/wobble/fragment.glsl'
+import slicedVertexShader from './shaders/sliced/vertex.glsl'
+import slicedFragmentShader from './shaders/sliced/fragment.glsl'
 
 /**
  * Base
@@ -32,115 +31,118 @@ gltfLoader.setDRACOLoader(dracoLoader)
 /**
  * Environment map
  */
-rgbeLoader.load('./urban_alley_01_1k.hdr', (environmentMap) =>
+rgbeLoader.load('./aerodynamics_workshop.hdr', (environmentMap) =>
 {
     environmentMap.mapping = THREE.EquirectangularReflectionMapping
 
     scene.background = environmentMap
+    scene.backgroundBlurriness = 0.5
     scene.environment = environmentMap
 })
 
-debugObject.colorA = '#0000ff'
-debugObject.colorB = '#ff0000'
-
 const uniforms = {
-    uTime: new THREE.Uniform(0),
-    uPositionFrequency: new THREE.Uniform(0.5),
-    uTimeFrequency: new THREE.Uniform(0.4),
-    uStrength: new THREE.Uniform(0.3),
-    uWarpPositionFrequency: new THREE.Uniform(0.38),
-    uWarpTimeFrequency: new THREE.Uniform(0.12),
-    uWarpStrength: new THREE.Uniform(1.7),
-    uColorA: new THREE.Uniform(new THREE.Color(debugObject.colorA)),
-    uColorB: new THREE.Uniform(new THREE.Color(debugObject.colorB))
+    uSliceStart: new THREE.Uniform(1.75),
+    uSliceArc: new THREE.Uniform(1.25)
 }
 
-/**
- * Wobble
- */
+gui.add(uniforms.uSliceStart, 'value', - Math.PI, Math.PI, 0.001).name('uSliceStart')
+gui.add(uniforms.uSliceArc, 'value', 0, Math.PI * 2, 0.001).name('uSliceArc')
+
+const patchMap = {
+    csm_Slice :
+    {
+        '#include <colorspace_fragment>':
+        `
+            #include <colorspace_fragment>
+
+            if(!gl_FrontFacing)
+                gl_FragColor = vec4(0.75, 0.15, 0.3, 1.0);
+        `
+    }
+}
+
 // Material
-const material = new CustomShaderMaterial({
-    baseMaterial: THREE.MeshPhysicalMaterial,
-    vertexShader: wobbleVertexShader,
-    fragmentShader: wobbleFragmentShader,
+const material = new THREE.MeshStandardMaterial({
+    metalness: 0.5,
+    roughness: 0.25,
+    envMapIntensity: 0.5,
+    color: '#858080'
+})
+
+const slicedMaterial = new CustomShaderMaterial({
+    baseMaterial: THREE.MeshStandardMaterial,
+    vertexShader: slicedVertexShader,
+    fragmentShader: slicedFragmentShader,
     uniforms: uniforms,
-    metalness: 0,
-    roughness: 0.5,
-    color: '#ffffff',
-    transmission: 0,
-    ior: 1.5,
-    thickness: 1.5,
-    transparent: true,
-    wireframe: false
+    patchMap: patchMap,
+    metalness: 0.5,
+    roughness: 0.25,
+    envMapIntensity: 0.5,
+    color: '#858080',
+    side: THREE.DoubleSide
 })
 
-const depthMaterial = new CustomShaderMaterial({
+const slicedDeptMaterial = new CustomShaderMaterial({
     baseMaterial: THREE.MeshDepthMaterial,
-    vertexShader: wobbleVertexShader,
-    depthPacking: THREE.RGBADepthPacking,
-    uniforms: uniforms
+    vertexShader: slicedVertexShader,
+    fragmentShader: slicedFragmentShader,
+    uniforms: uniforms,
+    patchMap: patchMap,
+    depthPacking: THREE.RGBADepthPacking
 })
 
-// Tweaks
-gui.add(uniforms.uPositionFrequency, 'value', 0, 2, 0.001).name('uPositionFrequency')
-gui.add(uniforms.uTimeFrequency, 'value', 0, 2, 0.001).name('uTimeFrequency')
-gui.add(uniforms.uStrength, 'value', 0, 2, 0.001).name('uStrength')
-gui.add(uniforms.uWarpPositionFrequency, 'value', 0, 2, 0.001).name('uWarpPositionFrequency')
-gui.add(uniforms.uWarpTimeFrequency, 'value', 0, 2, 0.001).name('uWarpTimeFrequency')
-gui.add(uniforms.uWarpStrength, 'value', 0, 2, 0.001).name('uWarpStrength')
-gui.addColor(debugObject, 'colorA').onChange(() => uniforms.uColorA.value.set(debugObject.colorA))
-gui.addColor(debugObject, 'colorB').onChange(() => uniforms.uColorB.value.set(debugObject.colorB))
-
-gui.add(material, 'metalness', 0, 1, 0.001)
-gui.add(material, 'roughness', 0, 1, 0.001)
-gui.add(material, 'transmission', 0, 1, 0.001)
-gui.add(material, 'ior', 0, 10, 0.001)
-gui.add(material, 'thickness', 0, 10, 0.001)
-
-// Geometry
-// let geometry = new THREE.IcosahedronGeometry(2.5, 50)
-// geometry = mergeVertices(geometry)
-// const serb = geometry.computeTangents()
-
-// // Mesh
-// const wobble = new THREE.Mesh(geometry, material)
-// wobble.customDepthMaterial = depthMaterial
-// wobble.receiveShadow = true
-// wobble.castShadow = true
-// scene.add(wobble)
-
-gltfLoader.load('./suzanne.glb', (gltf) =>
+let model = null
+gltfLoader.load('./gears.glb', (gltf) =>
 {
-    const wobble = gltf.scene.children[0]
-    wobble.material = material
-    wobble.customDepthMaterial = depthMaterial
-    wobble.receiveShadow = true
-    wobble.castShadow = true
-    scene.add(wobble)
+    model = gltf.scene
+    model.traverse((child)=>
+    {
+        if(child.isMesh)
+        {
+            if(child.name === 'outerHull')
+            {
+                child.material = slicedMaterial
+                child.customDepthMaterial = slicedDeptMaterial
+            }
+            else
+            {
+                child.material = material
+            }
+            child.castShadow = true
+            child.receiveShadow = true
+        }
+    })
+    scene.add(model)
 })
 
 /**
  * Plane
  */
 const plane = new THREE.Mesh(
-    new THREE.PlaneGeometry(15, 15, 15),
-    new THREE.MeshStandardMaterial()
+    new THREE.PlaneGeometry(10, 10, 10),
+    new THREE.MeshStandardMaterial({ color: '#aaaaaa' })
 )
 plane.receiveShadow = true
-plane.rotation.y = Math.PI
-plane.position.y = - 5
-plane.position.z = 5
+plane.position.x = - 4
+plane.position.y = - 3
+plane.position.z = - 4
+plane.lookAt(new THREE.Vector3(0, 0, 0))
 scene.add(plane)
 
 /**
  * Lights
  */
-const directionalLight = new THREE.DirectionalLight('#ffffff', 3)
+const directionalLight = new THREE.DirectionalLight('#ffffff', 4)
+directionalLight.position.set(6.25, 3, 4)
 directionalLight.castShadow = true
 directionalLight.shadow.mapSize.set(1024, 1024)
-directionalLight.shadow.camera.far = 15
+directionalLight.shadow.camera.near = 0.1
+directionalLight.shadow.camera.far = 30
 directionalLight.shadow.normalBias = 0.05
-directionalLight.position.set(0.25, 2, - 2.25)
+directionalLight.shadow.camera.top = 8
+directionalLight.shadow.camera.right = 8
+directionalLight.shadow.camera.bottom = -8
+directionalLight.shadow.camera.left = -8
 scene.add(directionalLight)
 
 /**
@@ -173,7 +175,7 @@ window.addEventListener('resize', () =>
  */
 // Base camera
 const camera = new THREE.PerspectiveCamera(35, sizes.width / sizes.height, 0.1, 100)
-camera.position.set(13, - 3, - 5)
+camera.position.set(-5, 5, 12)
 scene.add(camera)
 
 // Controls
@@ -202,8 +204,8 @@ const clock = new THREE.Clock()
 const tick = () =>
 {
     const elapsedTime = clock.getElapsedTime()
-
-    uniforms.uTime.value = elapsedTime
+    if(model)
+        model.rotation.y = elapsedTime * 0.1
 
     // Update controls
     controls.update()
