@@ -1,13 +1,11 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js'
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js'
+import { SUBTRACTION, Evaluator, Brush } from 'three-bvh-csg'
 import CustomShaderMaterial from 'three-custom-shader-material/vanilla'
 import GUI from 'lil-gui'
-import slicedVertexShader from './shaders/sliced/vertex.glsl'
-import slicedFragmentShader from './shaders/sliced/fragment.glsl'
-
+import terrainVertexShader from './shaders/terrain/vertex.glsl'
+import terrainFragmentShader from './shaders/terrain/fragment.glsl'
 /**
  * Base
  */
@@ -23,15 +21,11 @@ const scene = new THREE.Scene()
 
 // Loaders
 const rgbeLoader = new RGBELoader()
-const dracoLoader = new DRACOLoader()
-dracoLoader.setDecoderPath('./draco/')
-const gltfLoader = new GLTFLoader()
-gltfLoader.setDRACOLoader(dracoLoader)
 
 /**
  * Environment map
  */
-rgbeLoader.load('./aerodynamics_workshop.hdr', (environmentMap) =>
+rgbeLoader.load('/spruit_sunrise.hdr', (environmentMap) =>
 {
     environmentMap.mapping = THREE.EquirectangularReflectionMapping
 
@@ -40,105 +34,98 @@ rgbeLoader.load('./aerodynamics_workshop.hdr', (environmentMap) =>
     scene.environment = environmentMap
 })
 
+const geometry = new THREE.PlaneGeometry(10, 10, 500, 500)
+geometry.deleteAttribute('uv')
+geometry.deleteAttribute('normal')
+geometry.rotateX(-Math.PI * 0.5)
+
+debugObject.colorWaterDeep = '#002b3d'
+debugObject.colorWaterSurface = '#66a8ff'
+debugObject.colorSand = '#ffe894'
+debugObject.colorGrass = '#85d534'
+debugObject.colorSnow = '#ffffff'
+debugObject.colorRock = '#bfbd8d'
+
 const uniforms = {
-    uSliceStart: new THREE.Uniform(1.75),
-    uSliceArc: new THREE.Uniform(1.25)
+    uTime: new THREE.Uniform(0),
+    uPositionFrequency: new THREE.Uniform(0.2),
+    uStrenght: new THREE.Uniform(2),
+    uWarpFrequency: new THREE.Uniform(5),
+    uWarpStrength: new THREE.Uniform(0.5),
+    uColorWaterDeep: new THREE.Uniform(new THREE.Color(debugObject.colorWaterDeep)),
+    uColorWaterSurface: new THREE.Uniform(new THREE.Color(debugObject.colorWaterSurface)),
+    uColorSand: new THREE.Uniform(new THREE.Color(debugObject.colorSand)),
+    uColorGrass: new THREE.Uniform(new THREE.Color(debugObject.colorGrass)),
+    uColorSnow: new THREE.Uniform(new THREE.Color(debugObject.colorSnow)),
+    uColorRock: new THREE.Uniform(new THREE.Color(debugObject.colorRock))
 }
 
-gui.add(uniforms.uSliceStart, 'value', - Math.PI, Math.PI, 0.001).name('uSliceStart')
-gui.add(uniforms.uSliceArc, 'value', 0, Math.PI * 2, 0.001).name('uSliceArc')
+gui.add(uniforms.uPositionFrequency, 'value', 0, 1, 0.001).name('uPositionFrequency')
+gui.add(uniforms.uStrenght, 'value', 0, 10, 0.001).name('uStrenght')
+gui.add(uniforms.uWarpFrequency, 'value', 0, 10, 0.001).name('uWarpFrequency')
+gui.add(uniforms.uWarpStrength, 'value', 0, 1, 0.001).name('uWarpStrength')
+gui.addColor(debugObject, 'colorWaterDeep').onChange(() => uniforms.uColorWaterDeep.value.set(debugObject.colorWaterDeep))
+gui.addColor(debugObject, 'colorWaterSurface').onChange(() => uniforms.uColorWaterSurface.value.set(debugObject.colorWaterSurface))
+gui.addColor(debugObject, 'colorSand').onChange(() => uniforms.uColorSand.value.set(debugObject.colorSand))
+gui.addColor(debugObject, 'colorGrass').onChange(() => uniforms.uColorGrass.value.set(debugObject.colorGrass))
+gui.addColor(debugObject, 'colorSnow').onChange(() => uniforms.uColorSnow.value.set(debugObject.colorSnow))
+gui.addColor(debugObject, 'colorRock').onChange(() => uniforms.uColorRock.value.set(debugObject.colorRock))
 
-const patchMap = {
-    csm_Slice :
-    {
-        '#include <colorspace_fragment>':
-        `
-            #include <colorspace_fragment>
-
-            if(!gl_FrontFacing)
-                gl_FragColor = vec4(0.75, 0.15, 0.3, 1.0);
-        `
-    }
-}
-
-// Material
-const material = new THREE.MeshStandardMaterial({
-    metalness: 0.5,
-    roughness: 0.25,
-    envMapIntensity: 0.5,
-    color: '#858080'
-})
-
-const slicedMaterial = new CustomShaderMaterial({
+const material = new CustomShaderMaterial({
     baseMaterial: THREE.MeshStandardMaterial,
-    vertexShader: slicedVertexShader,
-    fragmentShader: slicedFragmentShader,
+    vertexShader: terrainVertexShader,
+    fragmentShader: terrainFragmentShader,
     uniforms: uniforms,
-    patchMap: patchMap,
-    metalness: 0.5,
-    roughness: 0.25,
-    envMapIntensity: 0.5,
-    color: '#858080',
-    side: THREE.DoubleSide
+    metalness: 0,
+    roughness: 0.5,
+    color: '#85d534'
 })
 
-const slicedDeptMaterial = new CustomShaderMaterial({
+const depthMaterial = new CustomShaderMaterial({
     baseMaterial: THREE.MeshDepthMaterial,
-    vertexShader: slicedVertexShader,
-    fragmentShader: slicedFragmentShader,
+    vertexShader: terrainVertexShader,
     uniforms: uniforms,
-    patchMap: patchMap,
     depthPacking: THREE.RGBADepthPacking
 })
 
-let model = null
-gltfLoader.load('./gears.glb', (gltf) =>
-{
-    model = gltf.scene
-    model.traverse((child)=>
-    {
-        if(child.isMesh)
-        {
-            if(child.name === 'outerHull')
-            {
-                child.material = slicedMaterial
-                child.customDepthMaterial = slicedDeptMaterial
-            }
-            else
-            {
-                child.material = material
-            }
-            child.castShadow = true
-            child.receiveShadow = true
-        }
-    })
-    scene.add(model)
-})
+const terrain = new THREE.Mesh(geometry, material)
+terrain.customDepthMaterial = depthMaterial
+terrain.receiveShadow = true
+terrain.castShadow = true
+scene.add(terrain)
 
-/**
- * Plane
- */
-const plane = new THREE.Mesh(
-    new THREE.PlaneGeometry(10, 10, 10),
-    new THREE.MeshStandardMaterial({ color: '#aaaaaa' })
+const water = new THREE.Mesh(
+    new THREE.PlaneGeometry(10, 10, 1, 1),
+    new THREE.MeshPhysicalMaterial(
+        {
+            transmission: 1,
+            roughness: 0.3
+        }
+    )
 )
-plane.receiveShadow = true
-plane.position.x = - 4
-plane.position.y = - 3
-plane.position.z = - 4
-plane.lookAt(new THREE.Vector3(0, 0, 0))
-scene.add(plane)
+water.rotation.x = - Math.PI * 0.5
+water.position.y = -0.1
+scene.add(water)
+
+const boardFill = new Brush(new THREE.BoxGeometry(11, 2, 11))
+const boardHole = new Brush(new THREE.BoxGeometry(10, 2.1, 10))
+const evaluator = new Evaluator()
+const board = evaluator.evaluate(boardFill, boardHole, SUBTRACTION)
+board.geometry.clearGroups()
+board.material = new THREE.MeshStandardMaterial({color: '#ffffff', metalness: 0, roughness: 0.3})
+board.castShadow = true
+board.receiveShadow = true
+scene.add(board)
 
 /**
  * Lights
  */
-const directionalLight = new THREE.DirectionalLight('#ffffff', 4)
+const directionalLight = new THREE.DirectionalLight('#ffffff', 2)
 directionalLight.position.set(6.25, 3, 4)
 directionalLight.castShadow = true
 directionalLight.shadow.mapSize.set(1024, 1024)
 directionalLight.shadow.camera.near = 0.1
 directionalLight.shadow.camera.far = 30
-directionalLight.shadow.normalBias = 0.05
 directionalLight.shadow.camera.top = 8
 directionalLight.shadow.camera.right = 8
 directionalLight.shadow.camera.bottom = -8
@@ -175,7 +162,7 @@ window.addEventListener('resize', () =>
  */
 // Base camera
 const camera = new THREE.PerspectiveCamera(35, sizes.width / sizes.height, 0.1, 100)
-camera.position.set(-5, 5, 12)
+camera.position.set(-10, 6, -2)
 scene.add(camera)
 
 // Controls
@@ -204,8 +191,7 @@ const clock = new THREE.Clock()
 const tick = () =>
 {
     const elapsedTime = clock.getElapsedTime()
-    if(model)
-        model.rotation.y = elapsedTime * 0.1
+    uniforms.uTime.value = elapsedTime
 
     // Update controls
     controls.update()
