@@ -1,12 +1,32 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { gsap } from 'gsap'
 
 /**
  * Loaders
  */
-const gltfLoader = new GLTFLoader()
-const cubeTextureLoader = new THREE.CubeTextureLoader()
+const loadingBarElement = document.querySelector('.loading-bar')
+
+const loadingManager = new THREE.LoadingManager(
+    () =>
+    {
+        window.setTimeout(() =>
+        {
+            gsap.to(overlayMaterial.uniforms.uAlpha, { duration: 3, value: 0 })
+            loadingBarElement.classList.add('ended')
+            loadingBarElement.style.transform = ''
+        }, 500)
+
+    },
+    (itemUrl, itemsLoaded, itemsTotal) =>
+    {
+        const progressRatio = itemsLoaded / itemsTotal
+        loadingBarElement.style.transform = `scaleX(${progressRatio})`
+    }
+)
+const gltfLoader = new GLTFLoader(loadingManager)
+const cubeTextureLoader = new THREE.CubeTextureLoader(loadingManager)
 
 /**
  * Base
@@ -25,7 +45,7 @@ const overlayMaterial = new THREE.ShaderMaterial({
     transparent: true,
     uniforms:
     {
-        uAlpha: { value: 0 }
+        uAlpha: { value: 1 }
     },
     vertexShader: `
     void main()
