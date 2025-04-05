@@ -2,25 +2,37 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { gsap } from 'gsap'
+import { element } from 'three/tsl'
 
 /**
  * Loaders
  */
+let sceneReady = false
 const loadingBarElement = document.querySelector('.loading-bar')
-
 const loadingManager = new THREE.LoadingManager(
+    // Loaded
     () =>
     {
+        // Wait a little
         window.setTimeout(() =>
         {
-            gsap.to(overlayMaterial.uniforms.uAlpha, { duration: 3, value: 0 })
+            // Animate overlay
+            gsap.to(overlayMaterial.uniforms.uAlpha, { duration: 3, value: 0, delay: 1 })
+
+            // Update loadingBarElement
             loadingBarElement.classList.add('ended')
             loadingBarElement.style.transform = ''
         }, 500)
-
+        window.setTimeout(() =>
+        {
+            sceneReady = true
+        }, 2000)
     },
+
+    // Progress
     (itemUrl, itemsLoaded, itemsTotal) =>
     {
+        // Calculate the progress and update the loadingBarElement
         const progressRatio = itemsLoaded / itemsTotal
         loadingBarElement.style.transform = `scaleX(${progressRatio})`
     }
@@ -40,25 +52,30 @@ const canvas = document.querySelector('canvas.webgl')
 // Scene
 const scene = new THREE.Scene()
 
+/**
+ * Overlay
+ */
 const overlayGeometry = new THREE.PlaneGeometry(2, 2, 1, 1)
 const overlayMaterial = new THREE.ShaderMaterial({
+    // wireframe: true,
     transparent: true,
     uniforms:
     {
         uAlpha: { value: 1 }
     },
     vertexShader: `
-    void main()
-    {
-        gl_Position = vec4(position, 1.0);
-    }
+        void main()
+        {
+            gl_Position = vec4(position, 1.0);
+        }
     `,
     fragmentShader: `
-    uniform float uAlpha;
-    void main()
-    {
-        gl_FragColor = vec4(0.0, 0.0, 0.0, uAlpha);
-    }
+        uniform float uAlpha;
+
+        void main()
+        {
+            gl_FragColor = vec4(0.0, 0.0, 0.0, uAlpha);
+        }
     `
 })
 const overlay = new THREE.Mesh(overlayGeometry, overlayMaterial)
@@ -105,17 +122,25 @@ debugObject.envMapIntensity = 2.5
  * Models
  */
 gltfLoader.load(
-    '/models/FlightHelmet/glTF/FlightHelmet.gltf',
+    '/models/DamagedHelmet/glTF/DamagedHelmet.gltf',
     (gltf) =>
     {
-        gltf.scene.scale.set(10, 10, 10)
-        gltf.scene.position.set(0, - 4, 0)
+        gltf.scene.scale.set(2.5, 2.5, 2.5)
         gltf.scene.rotation.y = Math.PI * 0.5
         scene.add(gltf.scene)
 
         updateAllMaterials()
     }
 )
+
+const raycaster = new THREE.Raycaster()
+
+const points = [
+    {
+        position: new THREE.Vector3(1.55, 0.3, -0.6),
+        element: document.querySelector('.point-0')
+    }
+]
 
 /**
  * Lights
@@ -184,6 +209,39 @@ const tick = () =>
 {
     // Update controls
     controls.update()
+
+    if(sceneReady)
+    {
+        for(const point of points)
+        {
+            const screenPosition = point.position.clone()
+            screenPosition.project(camera)
+
+            raycaster.setFromCamera(screenPosition, camera)
+            const intersects = raycaster.intersectObjects(scene.children, true)
+            if(intersects.length === 0)
+            {
+                point.element.classList.remove('visible')
+            }
+            else
+            {
+                const intersectionDistance = intersects[0].distance
+                const pointDistance = point.position.distanceTo(camera.position)
+                if(intersectionDistance > pointDistance)
+                {
+                    point.element.classList.add('visible')
+                }
+                else
+                {
+                    point.element.classList.remove('visible')
+                }
+            }
+            
+            const translateX = screenPosition.x * sizes.width * 0.5
+            const translateY = - screenPosition.y * sizes.height * 0.5
+            point.element.style.transform = `translate(${translateX}px, ${translateY}px)`
+        }
+    }
 
     // Render
     renderer.render(scene, camera)
